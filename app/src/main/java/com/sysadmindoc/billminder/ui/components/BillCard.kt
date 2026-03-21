@@ -170,5 +170,8 @@ fun getCategoryIcon(category: BillCategory) = when (category) {
     BillCategory.MEDICAL -> Icons.Filled.LocalHospital
     BillCategory.TRANSPORTATION -> Icons.Filled.DirectionsCar
     BillCategory.GROCERIES -> Icons.Filled.ShoppingCart
+    BillCategory.EDUCATION -> Icons.Filled.School
+    BillCategory.ENTERTAINMENT -> Icons.Filled.Movie
+    BillCategory.CHILDCARE -> Icons.Filled.ChildCare
     BillCategory.OTHER -> Icons.Filled.Receipt
 }
