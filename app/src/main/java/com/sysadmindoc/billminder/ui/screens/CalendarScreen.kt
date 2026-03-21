@@ -77,12 +77,7 @@ fun CalendarScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Calendar", color = CatText) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = CatCrust),
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Filled.ArrowBack, "Back", tint = CatText)
-                    }
-                }
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = CatCrust)
             )
         }
     ) { padding ->

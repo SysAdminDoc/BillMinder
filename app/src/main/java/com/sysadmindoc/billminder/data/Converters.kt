@@ -7,17 +7,20 @@ class Converters {
     fun fromBillCategory(value: BillCategory): String = value.name
 
     @TypeConverter
-    fun toBillCategory(value: String): BillCategory = BillCategory.valueOf(value)
+    fun toBillCategory(value: String): BillCategory =
+        try { BillCategory.valueOf(value) } catch (_: Exception) { BillCategory.OTHER }
 
     @TypeConverter
     fun fromRecurrence(value: Recurrence): String = value.name
 
     @TypeConverter
-    fun toRecurrence(value: String): Recurrence = Recurrence.valueOf(value)
+    fun toRecurrence(value: String): Recurrence =
+        try { Recurrence.valueOf(value) } catch (_: Exception) { Recurrence.MONTHLY }
 
     @TypeConverter
     fun fromReminderTiming(value: ReminderTiming?): String? = value?.name
 
     @TypeConverter
-    fun toReminderTiming(value: String?): ReminderTiming? = value?.let { ReminderTiming.valueOf(it) }
+    fun toReminderTiming(value: String?): ReminderTiming? =
+        value?.let { try { ReminderTiming.valueOf(it) } catch (_: Exception) { ReminderTiming.ONE_DAY } }
 }

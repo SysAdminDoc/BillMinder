@@ -1,23 +1,28 @@
 package com.sysadmindoc.billminder.ui.screens
 
 import androidx.compose.animation.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.sysadmindoc.billminder.data.BillCategory
+import com.sysadmindoc.billminder.data.SortMode
 import com.sysadmindoc.billminder.ui.components.BillCard
 import com.sysadmindoc.billminder.ui.components.SummaryCard
 import com.sysadmindoc.billminder.ui.theme.*
 import com.sysadmindoc.billminder.viewmodel.BillViewModel
-import com.sysadmindoc.billminder.viewmodel.BillWithStatus
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -25,24 +30,19 @@ fun HomeScreen(
     viewModel: BillViewModel,
     onAddBill: () -> Unit,
     onBillTap: (Long) -> Unit,
-    onCalendar: () -> Unit
+    onEditBill: (Long) -> Unit
 ) {
     val billsWithStatus by viewModel.billsWithStatus.collectAsState()
     val summary by viewModel.monthlySummary.collectAsState()
+    val searchQuery by viewModel.searchQuery.collectAsState()
+    val sortMode by viewModel.sortMode.collectAsState()
+    val filterCategory by viewModel.filterCategory.collectAsState()
+
+    var showSearch by remember { mutableStateOf(false) }
+    var showSortMenu by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = CatCrust,
-        topBar = {
-            TopAppBar(
-                title = { Text("BillMinder", color = CatText) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = CatCrust),
-                actions = {
-                    IconButton(onClick = onCalendar) {
-                        Icon(Icons.Filled.CalendarMonth, "Calendar", tint = CatSubtext0)
-                    }
-                }
-            )
-        },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = onAddBill,
@@ -60,9 +60,127 @@ fun HomeScreen(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            // Search + sort bar
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    AnimatedVisibility(
+                        visible = showSearch,
+                        enter = expandHorizontally() + fadeIn(),
+                        exit = shrinkHorizontally() + fadeOut(),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { viewModel.setSearchQuery(it) },
+                            placeholder = { Text("Search bills...", color = CatOverlay0) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = CatText,
+                                unfocusedTextColor = CatText,
+                                focusedBorderColor = CatBlue,
+                                unfocusedBorderColor = CatSurface1,
+                                cursorColor = CatBlue
+                            ),
+                            trailingIcon = {
+                                IconButton(onClick = {
+                                    viewModel.setSearchQuery("")
+                                    showSearch = false
+                                }) {
+                                    Icon(Icons.Filled.Close, "Clear", tint = CatSubtext0)
+                                }
+                            },
+                            shape = RoundedCornerShape(14.dp)
+                        )
+                    }
+
+                    if (!showSearch) {
+                        Spacer(Modifier.weight(1f))
+                    }
+
+                    if (!showSearch) {
+                        IconButton(onClick = { showSearch = true }) {
+                            Icon(Icons.Filled.Search, "Search", tint = CatSubtext0)
+                        }
+                    }
+
+                    // Sort button
+                    Box {
+                        IconButton(onClick = { showSortMenu = true }) {
+                            Icon(Icons.Filled.SwapVert, "Sort", tint = CatSubtext0)
+                        }
+                        DropdownMenu(
+                            expanded = showSortMenu,
+                            onDismissRequest = { showSortMenu = false },
+                            containerColor = CatSurface0
+                        ) {
+                            SortMode.entries.forEach { mode ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            mode.label,
+                                            color = if (mode == sortMode) CatBlue else CatText
+                                        )
+                                    },
+                                    onClick = {
+                                        viewModel.setSortMode(mode)
+                                        showSortMenu = false
+                                    },
+                                    leadingIcon = if (mode == sortMode) {
+                                        { Icon(Icons.Filled.Check, null, tint = CatBlue, modifier = Modifier.size(18.dp)) }
+                                    } else null
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Category filter chips
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    FilterChip(
+                        selected = filterCategory == null,
+                        onClick = { viewModel.setFilterCategory(null) },
+                        label = { Text("All") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = CatBlue.copy(alpha = 0.2f),
+                            selectedLabelColor = CatBlue,
+                            containerColor = CatSurface0,
+                            labelColor = CatSubtext0
+                        ),
+                        border = null
+                    )
+                    BillCategory.entries.forEach { cat ->
+                        FilterChip(
+                            selected = filterCategory == cat,
+                            onClick = {
+                                viewModel.setFilterCategory(if (filterCategory == cat) null else cat)
+                            },
+                            label = { Text(cat.label) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = CatBlue.copy(alpha = 0.2f),
+                                selectedLabelColor = CatBlue,
+                                containerColor = CatSurface0,
+                                labelColor = CatSubtext0
+                            ),
+                            border = null
+                        )
+                    }
+                }
+            }
+
+            // Summary card
             item {
                 SummaryCard(summary = summary)
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(4.dp))
             }
 
             if (billsWithStatus.isEmpty()) {
@@ -74,7 +192,10 @@ fun HomeScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "No bills yet.\nTap + to add your first bill.",
+                            text = if (searchQuery.isNotBlank() || filterCategory != null)
+                                "No bills match your search."
+                            else
+                                "No bills yet.\nTap + to add your first bill.",
                             style = MaterialTheme.typography.bodyLarge,
                             color = CatSubtext0,
                             textAlign = TextAlign.Center
@@ -87,23 +208,52 @@ fun HomeScreen(
             val overdue = billsWithStatus.filter { it.isOverdue }
             if (overdue.isNotEmpty()) {
                 item {
-                    Text(
-                        "Overdue",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = CatRed,
-                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Overdue",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = CatRed,
+                            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Badge(containerColor = CatRed, contentColor = CatCrust) {
+                            Text("${overdue.size}")
+                        }
+                    }
                 }
                 itemsIndexed(overdue, key = { _, b -> "overdue_${b.bill.id}" }) { index, bws ->
                     AnimatedVisibility(
                         visible = true,
-                        enter = fadeIn() + slideInVertically(initialOffsetY = { it / 4 })
+                        enter = fadeIn() + slideInVertically(initialOffsetY = { (index + 1) * 40 })
                     ) {
-                        BillCard(
-                            billWithStatus = bws,
-                            onTap = { onBillTap(bws.bill.id) },
-                            onMarkPaid = { viewModel.markAsPaid(bws.bill) }
-                        )
+                        SwipeToDismissBox(
+                            state = rememberSwipeToDismissBoxState(
+                                confirmValueChange = { value ->
+                                    if (value == SwipeToDismissBoxValue.EndToStart) {
+                                        viewModel.deleteBill(bws.bill)
+                                        true
+                                    } else false
+                                }
+                            ),
+                            backgroundContent = {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(CatRed, RoundedCornerShape(16.dp))
+                                        .padding(horizontal = 20.dp),
+                                    contentAlignment = Alignment.CenterEnd
+                                ) {
+                                    Icon(Icons.Filled.Delete, "Delete", tint = CatCrust)
+                                }
+                            },
+                            enableDismissFromStartToEnd = false
+                        ) {
+                            BillCard(
+                                billWithStatus = bws,
+                                onTap = { onBillTap(bws.bill.id) },
+                                onMarkPaid = { viewModel.markAsPaid(bws.bill) }
+                            )
+                        }
                     }
                 }
             }
@@ -112,19 +262,53 @@ fun HomeScreen(
             val upcoming = billsWithStatus.filter { !it.isPaidThisCycle && !it.isOverdue }
             if (upcoming.isNotEmpty()) {
                 item {
-                    Text(
-                        "Upcoming",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = CatSubtext0,
-                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Upcoming",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = CatSubtext0,
+                            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Badge(containerColor = CatSurface1, contentColor = CatText) {
+                            Text("${upcoming.size}")
+                        }
+                    }
                 }
                 itemsIndexed(upcoming, key = { _, b -> "upcoming_${b.bill.id}" }) { index, bws ->
-                    BillCard(
-                        billWithStatus = bws,
-                        onTap = { onBillTap(bws.bill.id) },
-                        onMarkPaid = { viewModel.markAsPaid(bws.bill) }
-                    )
+                    AnimatedVisibility(
+                        visible = true,
+                        enter = fadeIn() + slideInVertically(initialOffsetY = { (index + 1) * 40 })
+                    ) {
+                        SwipeToDismissBox(
+                            state = rememberSwipeToDismissBoxState(
+                                confirmValueChange = { value ->
+                                    if (value == SwipeToDismissBoxValue.EndToStart) {
+                                        viewModel.deleteBill(bws.bill)
+                                        true
+                                    } else false
+                                }
+                            ),
+                            backgroundContent = {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(CatRed, RoundedCornerShape(16.dp))
+                                        .padding(horizontal = 20.dp),
+                                    contentAlignment = Alignment.CenterEnd
+                                ) {
+                                    Icon(Icons.Filled.Delete, "Delete", tint = CatCrust)
+                                }
+                            },
+                            enableDismissFromStartToEnd = false
+                        ) {
+                            BillCard(
+                                billWithStatus = bws,
+                                onTap = { onBillTap(bws.bill.id) },
+                                onMarkPaid = { viewModel.markAsPaid(bws.bill) }
+                            )
+                        }
+                    }
                 }
             }
 
@@ -132,12 +316,18 @@ fun HomeScreen(
             val paid = billsWithStatus.filter { it.isPaidThisCycle }
             if (paid.isNotEmpty()) {
                 item {
-                    Text(
-                        "Paid",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = CatGreen,
-                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Paid",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = CatGreen,
+                            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Badge(containerColor = CatGreen.copy(alpha = 0.2f), contentColor = CatGreen) {
+                            Text("${paid.size}")
+                        }
+                    }
                 }
                 itemsIndexed(paid, key = { _, b -> "paid_${b.bill.id}" }) { index, bws ->
                     BillCard(

@@ -59,6 +59,7 @@ object NotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        // Mark paid action
         val markPaidIntent = Intent(context, ReminderReceiver::class.java).apply {
             action = "MARK_PAID"
             putExtra("bill_id", billId)
@@ -66,6 +67,36 @@ object NotificationHelper {
         }
         val markPaidPending = PendingIntent.getBroadcast(
             context, (billId + 10000).toInt(), markPaidIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Snooze 1 hour action
+        val snooze1hIntent = Intent(context, ReminderReceiver::class.java).apply {
+            action = "SNOOZE"
+            putExtra("bill_id", billId)
+            putExtra("bill_name", billName)
+            putExtra("amount", amount)
+            putExtra("days_until_due", daysUntilDue)
+            putExtra("is_auto_pay", isAutoPay)
+            putExtra("snooze_minutes", 60)
+        }
+        val snooze1hPending = PendingIntent.getBroadcast(
+            context, (billId + 30000).toInt(), snooze1hIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Snooze tomorrow action
+        val snoozeTmrwIntent = Intent(context, ReminderReceiver::class.java).apply {
+            action = "SNOOZE"
+            putExtra("bill_id", billId)
+            putExtra("bill_name", billName)
+            putExtra("amount", amount)
+            putExtra("days_until_due", daysUntilDue)
+            putExtra("is_auto_pay", isAutoPay)
+            putExtra("snooze_minutes", 60 * 24)
+        }
+        val snoozeTmrwPending = PendingIntent.getBroadcast(
+            context, (billId + 40000).toInt(), snoozeTmrwIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -86,7 +117,9 @@ object NotificationHelper {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setContentIntent(pendingIntent)
-            .addAction(R.drawable.ic_notification, "Mark Paid", markPaidPending)
+            .addAction(R.drawable.ic_notification, "Paid", markPaidPending)
+            .addAction(R.drawable.ic_notification, "1hr", snooze1hPending)
+            .addAction(R.drawable.ic_notification, "Tomorrow", snoozeTmrwPending)
             .setAutoCancel(true)
             .build()
 
@@ -111,6 +144,16 @@ object NotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val markPaidIntent = Intent(context, ReminderReceiver::class.java).apply {
+            action = "MARK_PAID"
+            putExtra("bill_id", billId)
+            putExtra("amount", amount)
+        }
+        val markPaidPending = PendingIntent.getBroadcast(
+            context, (billId + 10000).toInt(), markPaidIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val notification = NotificationCompat.Builder(context, CHANNEL_OVERDUE)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("OVERDUE: $billName")
@@ -118,6 +161,7 @@ object NotificationHelper {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setContentIntent(pendingIntent)
+            .addAction(R.drawable.ic_notification, "Paid", markPaidPending)
             .setOngoing(true)
             .build()
 

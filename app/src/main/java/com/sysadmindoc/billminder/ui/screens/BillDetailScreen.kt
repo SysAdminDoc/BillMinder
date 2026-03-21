@@ -35,12 +35,19 @@ fun BillDetailScreen(
     onEdit: (Long) -> Unit
 ) {
     var bill by remember { mutableStateOf<Bill?>(null) }
+    var lifetimeSpending by remember { mutableDoubleStateOf(0.0) }
     val payments by viewModel.getPaymentsForBill(billId).collectAsState(initial = emptyList())
     val dateFormat = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
     val dateTimeFormat = SimpleDateFormat("MMM d, yyyy 'at' h:mm a", Locale.getDefault())
 
     LaunchedEffect(billId) {
         bill = viewModel.getBillById(billId)
+        lifetimeSpending = viewModel.getLifetimeSpending(billId)
+    }
+
+    // Refresh lifetime when payments change
+    LaunchedEffect(payments.size) {
+        lifetimeSpending = viewModel.getLifetimeSpending(billId)
     }
 
     val currentBill = bill ?: return
@@ -124,11 +131,58 @@ fun BillDetailScreen(
                         DetailRow("Auto-Pay", if (currentBill.isAutoPay) "Yes" else "No")
                         DetailRow("Reminders", if (currentBill.isEnabled) "Enabled" else "Disabled")
 
+                        if (currentBill.tags.isNotBlank()) {
+                            DetailRow("Tags", currentBill.tags)
+                        }
+
                         if (currentBill.notes.isNotBlank()) {
                             Spacer(Modifier.height(12.dp))
                             Text("Notes", style = MaterialTheme.typography.labelLarge, color = CatSubtext0)
                             Spacer(Modifier.height(4.dp))
                             Text(currentBill.notes, color = CatText, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            }
+
+            // Lifetime spending card
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = CatSurface0)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(
+                                "Lifetime Spending",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = CatSubtext0
+                            )
+                            Text(
+                                "$${"%,.2f".format(lifetimeSpending)}",
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = CatMauve
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                "${payments.size} payments",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = CatSubtext0
+                            )
+                            if (payments.isNotEmpty()) {
+                                val avgPayment = lifetimeSpending / payments.size
+                                Text(
+                                    "Avg: $${"%,.2f".format(avgPayment)}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = CatOverlay0
+                                )
+                            }
                         }
                     }
                 }
@@ -209,6 +263,13 @@ private fun PaymentRow(payment: Payment, dateFormat: SimpleDateFormat) {
                     style = MaterialTheme.typography.bodyMedium,
                     color = CatText
                 )
+                if (payment.confirmationNumber.isNotBlank()) {
+                    Text(
+                        "Conf: ${payment.confirmationNumber}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = CatSubtext0
+                    )
+                }
                 if (payment.note.isNotBlank()) {
                     Text(
                         payment.note,

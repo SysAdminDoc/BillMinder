@@ -41,6 +41,8 @@ fun AddEditBillScreen(
     var recurrence by remember { mutableStateOf(Recurrence.MONTHLY) }
     var isAutoPay by remember { mutableStateOf(false) }
     var notes by remember { mutableStateOf("") }
+    var tags by remember { mutableStateOf("") }
+    var paymentUrl by remember { mutableStateOf("") }
     var reminderTiming by remember { mutableStateOf(ReminderTiming.ONE_DAY) }
     var secondReminder by remember { mutableStateOf<ReminderTiming?>(null) }
     var isEnabled by remember { mutableStateOf(true) }
@@ -61,6 +63,8 @@ fun AddEditBillScreen(
             recurrence = bill.recurrence
             isAutoPay = bill.isAutoPay
             notes = bill.notes
+            tags = bill.tags
+            paymentUrl = bill.paymentUrl
             reminderTiming = bill.reminderTiming
             secondReminder = bill.secondReminderTiming
             isEnabled = bill.isEnabled
@@ -113,7 +117,6 @@ fun AddEditBillScreen(
         ) {
             Spacer(Modifier.height(4.dp))
 
-            // Name
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
@@ -123,7 +126,6 @@ fun AddEditBillScreen(
                 colors = billFieldColors()
             )
 
-            // Amount
             OutlinedTextField(
                 value = amount,
                 onValueChange = { v -> if (v.matches(Regex("^\\d*\\.?\\d{0,2}$"))) amount = v },
@@ -135,7 +137,6 @@ fun AddEditBillScreen(
                 colors = billFieldColors()
             )
 
-            // Due day
             OutlinedTextField(
                 value = dueDay,
                 onValueChange = { v ->
@@ -156,7 +157,7 @@ fun AddEditBillScreen(
                 colors = billFieldColors()
             )
 
-            // Category dropdown
+            // Category
             Box {
                 OutlinedTextField(
                     value = category.label,
@@ -187,7 +188,7 @@ fun AddEditBillScreen(
                 }
             }
 
-            // Recurrence dropdown
+            // Recurrence
             Box {
                 OutlinedTextField(
                     value = recurrence.label,
@@ -217,7 +218,7 @@ fun AddEditBillScreen(
                 }
             }
 
-            // Reminder timing
+            // Reminders
             Box {
                 OutlinedTextField(
                     value = reminderTiming.label,
@@ -247,7 +248,6 @@ fun AddEditBillScreen(
                 }
             }
 
-            // Second reminder
             Box {
                 OutlinedTextField(
                     value = secondReminder?.label ?: "None",
@@ -267,24 +267,40 @@ fun AddEditBillScreen(
                 ) {
                     DropdownMenuItem(
                         text = { Text("None", color = CatText) },
-                        onClick = {
-                            secondReminder = null
-                            showSecondReminderMenu = false
-                        }
+                        onClick = { secondReminder = null; showSecondReminderMenu = false }
                     )
                     ReminderTiming.entries.forEach { timing ->
                         DropdownMenuItem(
                             text = { Text(timing.label, color = CatText) },
-                            onClick = {
-                                secondReminder = timing
-                                showSecondReminderMenu = false
-                            }
+                            onClick = { secondReminder = timing; showSecondReminderMenu = false }
                         )
                     }
                 }
             }
 
-            // Auto-pay toggle
+            // Tags
+            OutlinedTextField(
+                value = tags,
+                onValueChange = { tags = it },
+                label = { Text("Tags (comma-separated)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("e.g. essential, shared, work", color = CatOverlay0) },
+                colors = billFieldColors()
+            )
+
+            // Payment URL
+            OutlinedTextField(
+                value = paymentUrl,
+                onValueChange = { paymentUrl = it },
+                label = { Text("Payment URL (optional)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("https://...", color = CatOverlay0) },
+                colors = billFieldColors()
+            )
+
+            // Toggles
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -295,15 +311,12 @@ fun AddEditBillScreen(
                     checked = isAutoPay,
                     onCheckedChange = { isAutoPay = it },
                     colors = SwitchDefaults.colors(
-                        checkedThumbColor = CatCrust,
-                        checkedTrackColor = CatGreen,
-                        uncheckedThumbColor = CatOverlay0,
-                        uncheckedTrackColor = CatSurface1
+                        checkedThumbColor = CatCrust, checkedTrackColor = CatGreen,
+                        uncheckedThumbColor = CatOverlay0, uncheckedTrackColor = CatSurface1
                     )
                 )
             }
 
-            // Enabled toggle
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -314,10 +327,8 @@ fun AddEditBillScreen(
                     checked = isEnabled,
                     onCheckedChange = { isEnabled = it },
                     colors = SwitchDefaults.colors(
-                        checkedThumbColor = CatCrust,
-                        checkedTrackColor = CatBlue,
-                        uncheckedThumbColor = CatOverlay0,
-                        uncheckedTrackColor = CatSurface1
+                        checkedThumbColor = CatCrust, checkedTrackColor = CatBlue,
+                        uncheckedThumbColor = CatOverlay0, uncheckedTrackColor = CatSurface1
                     )
                 )
             }
@@ -354,7 +365,7 @@ fun AddEditBillScreen(
                 colors = billFieldColors()
             )
 
-            // Save button
+            // Save
             Button(
                 onClick = {
                     val parsedAmount = amount.toDoubleOrNull() ?: 0.0
@@ -372,6 +383,8 @@ fun AddEditBillScreen(
                         recurrence = recurrence,
                         isAutoPay = isAutoPay,
                         notes = notes.trim(),
+                        tags = tags.trim(),
+                        paymentUrl = paymentUrl.trim(),
                         reminderTiming = reminderTiming,
                         secondReminderTiming = secondReminder,
                         isEnabled = isEnabled,
@@ -380,13 +393,8 @@ fun AddEditBillScreen(
                     viewModel.saveBill(bill)
                     onNavigateBack()
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = CatBlue,
-                    contentColor = CatCrust
-                ),
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = CatBlue, contentColor = CatCrust),
                 shape = RoundedCornerShape(14.dp),
                 enabled = name.isNotBlank() && (amount.toDoubleOrNull() ?: 0.0) > 0
             ) {
