@@ -1,8 +1,10 @@
 package com.sysadmindoc.billminder.ui.components
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,11 +28,13 @@ import com.sysadmindoc.billminder.viewmodel.BillWithStatus
 import java.text.SimpleDateFormat
 import java.util.*
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun BillCard(
     billWithStatus: BillWithStatus,
     onTap: () -> Unit,
     onMarkPaid: () -> Unit,
+    onLongPressPaid: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val bill = billWithStatus.bill
@@ -142,9 +146,15 @@ fun BillCard(
                     color = if (billWithStatus.isPaidThisCycle) CatSubtext0 else CatText
                 )
                 Spacer(Modifier.height(4.dp))
-                IconButton(
-                    onClick = onMarkPaid,
-                    modifier = Modifier.size(32.dp)
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .combinedClickable(
+                            onClick = onMarkPaid,
+                            onLongClick = onLongPressPaid
+                        ),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = if (billWithStatus.isPaidThisCycle)

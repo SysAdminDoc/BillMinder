@@ -73,6 +73,39 @@ fun StatsScreen(viewModel: BillViewModel) {
             }
         }
 
+        // Yearly projection
+        if (chartData.yearlyProjection > 0) {
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = CatSurface0)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(20.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("Yearly Projection", style = MaterialTheme.typography.labelLarge, color = CatSubtext0)
+                        Text(
+                            "$${"%,.2f".format(chartData.yearlyProjection)}",
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = CatPeach
+                        )
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text("Monthly Avg", style = MaterialTheme.typography.labelMedium, color = CatSubtext0)
+                        Text(
+                            "$${"%,.2f".format(chartData.yearlyProjection / 12)}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = CatSubtext1
+                        )
+                    }
+                }
+            }
+        }
+
         // Category pie chart
         if (chartData.categoryBreakdown.isNotEmpty()) {
             Card(

@@ -76,6 +76,14 @@ interface BillDao {
     // Monthly spending totals for trend chart
     @Query("SELECT COALESCE(SUM(amount), 0.0) FROM payments WHERE paidAt >= :startOfMonth AND paidAt < :endOfMonth")
     suspend fun getMonthlySpendingTotal(startOfMonth: Long, endOfMonth: Long): Double
+
+    // Count consecutive on-time payments (paid before due date) for streak
+    @Query("SELECT * FROM payments WHERE billId = :billId ORDER BY dueDate DESC")
+    suspend fun getPaymentHistoryForStreak(billId: Long): List<Payment>
+
+    // Count total bills
+    @Query("SELECT COUNT(*) FROM bills WHERE isEnabled = 1")
+    suspend fun getActiveBillCount(): Int
 }
 
 data class CategorySpending(

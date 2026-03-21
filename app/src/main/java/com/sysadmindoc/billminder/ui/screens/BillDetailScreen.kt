@@ -1,5 +1,7 @@
 package com.sysadmindoc.billminder.ui.screens
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -14,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -34,20 +37,24 @@ fun BillDetailScreen(
     onNavigateBack: () -> Unit,
     onEdit: (Long) -> Unit
 ) {
+    val context = LocalContext.current
     var bill by remember { mutableStateOf<Bill?>(null) }
     var lifetimeSpending by remember { mutableDoubleStateOf(0.0) }
+    var onTimeStreak by remember { mutableIntStateOf(0) }
     val payments by viewModel.getPaymentsForBill(billId).collectAsState(initial = emptyList())
     val dateFormat = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
     val dateTimeFormat = SimpleDateFormat("MMM d, yyyy 'at' h:mm a", Locale.getDefault())
+    var showMoreMenu by remember { mutableStateOf(false) }
 
     LaunchedEffect(billId) {
         bill = viewModel.getBillById(billId)
         lifetimeSpending = viewModel.getLifetimeSpending(billId)
+        onTimeStreak = viewModel.getOnTimeStreak(billId)
     }
 
-    // Refresh lifetime when payments change
     LaunchedEffect(payments.size) {
         lifetimeSpending = viewModel.getLifetimeSpending(billId)
+        onTimeStreak = viewModel.getOnTimeStreak(billId)
     }
 
     val currentBill = bill ?: return
@@ -66,6 +73,64 @@ fun BillDetailScreen(
                 actions = {
                     IconButton(onClick = { onEdit(billId) }) {
                         Icon(Icons.Filled.Edit, "Edit", tint = CatBlue)
+                    }
+                    Box {
+                        IconButton(onClick = { showMoreMenu = true }) {
+                            Icon(Icons.Filled.MoreVert, "More", tint = CatSubtext0)
+                        }
+                        DropdownMenu(
+                            expanded = showMoreMenu,
+                            onDismissRequest = { showMoreMenu = false },
+                            containerColor = CatSurface0
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Duplicate Bill", color = CatText) },
+                                onClick = {
+                                    viewModel.duplicateBill(currentBill)
+                                    showMoreMenu = false
+                                    onNavigateBack()
+                                },
+                                leadingIcon = { Icon(Icons.Filled.ContentCopy, null, tint = CatBlue) }
+                            )
+                            if (currentBill.paymentUrl.isNotBlank()) {
+                                DropdownMenuItem(
+                                    text = { Text("Pay Now", color = CatText) },
+                                    onClick = {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(currentBill.paymentUrl))
+                                        context.startActivity(intent)
+                                        showMoreMenu = false
+                                    },
+                                    leadingIcon = { Icon(Icons.Filled.OpenInBrowser, null, tint = CatGreen) }
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text("Share", color = CatText) },
+                                onClick = {
+                                    val nextDue = ReminderScheduler.getNextDueDate(currentBill)
+                                    val shareText = "${currentBill.name}\n" +
+                                        "Amount: $${"%,.2f".format(currentBill.amount)}\n" +
+                                        "Due: ${dateFormat.format(Date(nextDue))}\n" +
+                                        "Recurrence: ${currentBill.recurrence.label}\n" +
+                                        if (currentBill.isAutoPay) "Auto-Pay: Yes" else ""
+                                    val intent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_TEXT, shareText.trim())
+                                    }
+                                    context.startActivity(Intent.createChooser(intent, "Share bill"))
+                                    showMoreMenu = false
+                                },
+                                leadingIcon = { Icon(Icons.Filled.Share, null, tint = CatSubtext0) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Delete", color = CatRed) },
+                                onClick = {
+                                    viewModel.deleteBill(currentBill)
+                                    showMoreMenu = false
+                                    onNavigateBack()
+                                },
+                                leadingIcon = { Icon(Icons.Filled.Delete, null, tint = CatRed) }
+                            )
+                        }
                     }
                 }
             )
@@ -94,14 +159,13 @@ fun BillDetailScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    getCategoryIcon(currentBill.category),
-                                    null,
+                                    getCategoryIcon(currentBill.category), null,
                                     tint = Color(currentBill.color),
                                     modifier = Modifier.size(28.dp)
                                 )
                             }
                             Spacer(Modifier.width(16.dp))
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     "$${"%,.2f".format(currentBill.amount)}",
                                     fontSize = 32.sp,
@@ -113,6 +177,27 @@ fun BillDetailScreen(
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = CatSubtext0
                                 )
+                            }
+                            // On-time streak badge
+                            if (onTimeStreak > 0) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = CatGreen.copy(alpha = 0.15f)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Filled.LocalFireDepartment, null, tint = CatPeach, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(
+                                            "$onTimeStreak",
+                                            color = CatGreen,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp
+                                        )
+                                    }
+                                }
                             }
                         }
 
@@ -130,6 +215,9 @@ fun BillDetailScreen(
                         }
                         DetailRow("Auto-Pay", if (currentBill.isAutoPay) "Yes" else "No")
                         DetailRow("Reminders", if (currentBill.isEnabled) "Enabled" else "Disabled")
+                        if (onTimeStreak > 0) {
+                            DetailRow("On-Time Streak", "$onTimeStreak consecutive")
+                        }
 
                         if (currentBill.tags.isNotBlank()) {
                             DetailRow("Tags", currentBill.tags)
@@ -140,6 +228,24 @@ fun BillDetailScreen(
                             Text("Notes", style = MaterialTheme.typography.labelLarge, color = CatSubtext0)
                             Spacer(Modifier.height(4.dp))
                             Text(currentBill.notes, color = CatText, style = MaterialTheme.typography.bodyMedium)
+                        }
+
+                        // Pay Now button
+                        if (currentBill.paymentUrl.isNotBlank()) {
+                            Spacer(Modifier.height(16.dp))
+                            Button(
+                                onClick = {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(currentBill.paymentUrl))
+                                    context.startActivity(intent)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = CatGreen, contentColor = CatCrust),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(Icons.Filled.OpenInBrowser, null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Pay Now", fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
@@ -157,11 +263,7 @@ fun BillDetailScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column {
-                            Text(
-                                "Lifetime Spending",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = CatSubtext0
-                            )
+                            Text("Lifetime Spending", style = MaterialTheme.typography.labelLarge, color = CatSubtext0)
                             Text(
                                 "$${"%,.2f".format(lifetimeSpending)}",
                                 fontSize = 24.sp,
@@ -170,18 +272,10 @@ fun BillDetailScreen(
                             )
                         }
                         Column(horizontalAlignment = Alignment.End) {
-                            Text(
-                                "${payments.size} payments",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = CatSubtext0
-                            )
+                            Text("${payments.size} payments", style = MaterialTheme.typography.bodyMedium, color = CatSubtext0)
                             if (payments.isNotEmpty()) {
                                 val avgPayment = lifetimeSpending / payments.size
-                                Text(
-                                    "Avg: $${"%,.2f".format(avgPayment)}",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = CatOverlay0
-                                )
+                                Text("Avg: $${"%,.2f".format(avgPayment)}", style = MaterialTheme.typography.labelMedium, color = CatOverlay0)
                             }
                         }
                     }
@@ -190,26 +284,14 @@ fun BillDetailScreen(
 
             // Payment history
             item {
-                Text(
-                    "Payment History",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = CatText,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
+                Text("Payment History", style = MaterialTheme.typography.titleMedium, color = CatText,
+                    modifier = Modifier.padding(top = 8.dp))
             }
 
             if (payments.isEmpty()) {
                 item {
-                    Card(
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = CatSurface0)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(24.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
+                    Card(shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = CatSurface0)) {
+                        Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
                             Text("No payments recorded yet", color = CatSubtext0)
                         }
                     }
@@ -228,9 +310,7 @@ fun BillDetailScreen(
 @Composable
 private fun DetailRow(label: String, value: String) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(label, color = CatSubtext0, style = MaterialTheme.typography.bodyMedium)
@@ -240,50 +320,23 @@ private fun DetailRow(label: String, value: String) {
 
 @Composable
 private fun PaymentRow(payment: Payment, dateFormat: SimpleDateFormat) {
-    Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = CatSurface0)
-    ) {
+    Card(shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = CatSurface0)) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                Icons.Filled.CheckCircle,
-                null,
-                tint = CatGreen,
-                modifier = Modifier.size(20.dp)
-            )
+            Icon(Icons.Filled.CheckCircle, null, tint = CatGreen, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    dateFormat.format(Date(payment.paidAt)),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = CatText
-                )
+                Text(dateFormat.format(Date(payment.paidAt)), style = MaterialTheme.typography.bodyMedium, color = CatText)
                 if (payment.confirmationNumber.isNotBlank()) {
-                    Text(
-                        "Conf: ${payment.confirmationNumber}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = CatSubtext0
-                    )
+                    Text("Conf: ${payment.confirmationNumber}", style = MaterialTheme.typography.labelMedium, color = CatSubtext0)
                 }
                 if (payment.note.isNotBlank()) {
-                    Text(
-                        payment.note,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = CatSubtext0
-                    )
+                    Text(payment.note, style = MaterialTheme.typography.labelMedium, color = CatSubtext0)
                 }
             }
-            Text(
-                "$${"%,.2f".format(payment.amount)}",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = CatGreen
-            )
+            Text("$${"%,.2f".format(payment.amount)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = CatGreen)
         }
     }
 }

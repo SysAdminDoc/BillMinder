@@ -23,6 +23,7 @@ import com.sysadmindoc.billminder.data.*
 import com.sysadmindoc.billminder.ui.theme.*
 import com.sysadmindoc.billminder.viewmodel.BillViewModel
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.horizontalScroll
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -116,6 +117,35 @@ fun AddEditBillScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Spacer(Modifier.height(4.dp))
+
+            // Quick-add templates (only when adding new bill)
+            if (!isEditing) {
+                Text("Quick Add", style = MaterialTheme.typography.labelLarge, color = CatSubtext0)
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    billTemplates.forEach { template ->
+                        SuggestionChip(
+                            onClick = {
+                                name = template.name
+                                category = template.category
+                                recurrence = template.recurrence
+                                selectedColor = CategoryColors[template.category.ordinal % CategoryColors.size].value.toLong()
+                                template.suggestedAmount?.let {
+                                    amount = it.toBigDecimal().stripTrailingZeros().toPlainString()
+                                }
+                            },
+                            label = { Text(template.name) },
+                            colors = SuggestionChipDefaults.suggestionChipColors(
+                                containerColor = CatSurface0,
+                                labelColor = CatSubtext0
+                            ),
+                            border = null
+                        )
+                    }
+                }
+            }
 
             OutlinedTextField(
                 value = name,

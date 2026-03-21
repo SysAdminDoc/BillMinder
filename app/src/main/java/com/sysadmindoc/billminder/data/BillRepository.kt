@@ -58,6 +58,17 @@ class BillRepository(private val dao: BillDao) {
         return dao.getMonthlySpendingTotal(start, end)
     }
 
+    suspend fun getOnTimeStreak(billId: Long): Int {
+        val payments = dao.getPaymentHistoryForStreak(billId)
+        var streak = 0
+        for (p in payments) {
+            if (p.paidAt <= p.dueDate) streak++ else break
+        }
+        return streak
+    }
+
+    suspend fun getActiveBillCount(): Int = dao.getActiveBillCount()
+
     private fun getMonthRange(year: Int, month: Int): Pair<Long, Long> {
         val start = Calendar.getInstance().apply {
             set(year, month, 1, 0, 0, 0)

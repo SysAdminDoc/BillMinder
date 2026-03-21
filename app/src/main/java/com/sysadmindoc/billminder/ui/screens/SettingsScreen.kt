@@ -109,7 +109,7 @@ fun SettingsScreen(
             colors = CardDefaults.cardColors(containerColor = CatSurface0)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("BillMinder v2.0.0", style = MaterialTheme.typography.titleMedium, color = CatText)
+                Text("BillMinder v2.1.0", style = MaterialTheme.typography.titleMedium, color = CatText)
                 Spacer(Modifier.height(4.dp))
                 Text(
                     "Never miss a payment. Track bills, get reminders, visualize spending.",

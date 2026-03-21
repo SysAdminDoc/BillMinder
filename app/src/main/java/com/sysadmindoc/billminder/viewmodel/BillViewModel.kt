@@ -24,13 +24,16 @@ data class MonthlySummary(
     val remaining: Double,
     val billCount: Int,
     val paidCount: Int,
-    val overdueCount: Int
+    val overdueCount: Int,
+    val nextDueBill: BillWithStatus? = null,
+    val allPaid: Boolean = false
 )
 
 data class ChartData(
     val categoryBreakdown: List<Pair<BillCategory, Double>> = emptyList(),
     val monthlyTrend: List<Pair<String, Double>> = emptyList(),
-    val lifetimeTotal: Double = 0.0
+    val lifetimeTotal: Double = 0.0,
+    val yearlyProjection: Double = 0.0
 )
 
 class BillViewModel(application: Application) : AndroidViewModel(application) {
@@ -48,6 +51,14 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
     private val _filterCategory = MutableStateFlow<BillCategory?>(null)
     val filterCategory: StateFlow<BillCategory?> = _filterCategory
 
+    // Undo delete state
+    private val _lastDeletedBill = MutableStateFlow<Bill?>(null)
+    val lastDeletedBill: StateFlow<Bill?> = _lastDeletedBill
+
+    // Snackbar events
+    private val _snackbarMessage = MutableSharedFlow<String>()
+    val snackbarMessage: SharedFlow<String> = _snackbarMessage
+
     val bills: StateFlow<List<Bill>> = repo.allBills
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -59,7 +70,6 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
     ) { billList, paymentList, query, sort, catFilter ->
         var filtered = billList
 
-        // Search filter
         if (query.isNotBlank()) {
             val q = query.lowercase()
             filtered = filtered.filter {
@@ -70,7 +80,6 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // Category filter
         if (catFilter != null) {
             filtered = filtered.filter { it.category == catFilter }
         }
@@ -84,7 +93,6 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
             BillWithStatus(bill, nextDue, daysUntil, isPaid, isOverdue)
         }
 
-        // Sort
         when (sort) {
             SortMode.DUE_DATE -> mapped.sortedWith(
                 compareBy<BillWithStatus> { it.isPaidThisCycle }.thenBy { it.daysUntilDue }
@@ -110,13 +118,18 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         val overdue = statuses.filter { it.isOverdue }
         val totalDue = statuses.sumOf { it.bill.amount }
         val totalPaid = paid.sumOf { it.bill.amount }
+        val nextDue = statuses.filter { !it.isPaidThisCycle && !it.isOverdue }
+            .minByOrNull { it.daysUntilDue }
+        val allPaid = statuses.isNotEmpty() && paid.size == statuses.size
         MonthlySummary(
             totalDue = totalDue,
             totalPaid = totalPaid,
             remaining = totalDue - totalPaid,
             billCount = statuses.size,
             paidCount = paid.size,
-            overdueCount = overdue.size
+            overdueCount = overdue.size,
+            nextDueBill = nextDue,
+            allPaid = allPaid
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MonthlySummary(0.0, 0.0, 0.0, 0, 0, 0))
 
@@ -141,17 +154,21 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
 
             val monthlyTrend = mutableListOf<Pair<String, Double>>()
             val monthNames = arrayOf("Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec")
-            for (i in 5 downTo 0) {
+            var totalLast12 = 0.0
+            var monthsCounted = 0
+            for (i in 11 downTo 0) {
                 val tCal = Calendar.getInstance().apply { add(Calendar.MONTH, -i) }
                 val m = tCal.get(Calendar.MONTH)
                 val y = tCal.get(Calendar.YEAR)
                 val total = repo.getMonthlySpendingTotal(y, m)
-                monthlyTrend.add("${monthNames[m]} ${y % 100}" to total)
+                if (i < 6) monthlyTrend.add("${monthNames[m]} ${y % 100}" to total)
+                if (total > 0) { totalLast12 += total; monthsCounted++ }
             }
 
             val lifetimeTotal = repo.getTotalLifetimeSpending()
+            val yearlyProjection = if (monthsCounted > 0) (totalLast12 / monthsCounted) * 12 else 0.0
 
-            _chartData.value = ChartData(categoryBreakdown, monthlyTrend, lifetimeTotal)
+            _chartData.value = ChartData(categoryBreakdown, monthlyTrend, lifetimeTotal, yearlyProjection)
         }
     }
 
@@ -182,16 +199,52 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             ReminderScheduler.cancelReminder(getApplication(), bill.id)
             repo.deleteBill(bill)
+            _lastDeletedBill.value = bill
+            _snackbarMessage.emit("${bill.name} deleted")
         }
     }
 
-    fun markAsPaid(bill: Bill) {
+    fun undoDelete() {
+        val bill = _lastDeletedBill.value ?: return
+        viewModelScope.launch {
+            val restored = bill.copy(id = 0)
+            val id = repo.insertBill(restored)
+            val saved = repo.getBillById(id) ?: return@launch
+            if (saved.isEnabled) {
+                ReminderScheduler.scheduleReminder(getApplication(), saved)
+            }
+            _lastDeletedBill.value = null
+        }
+    }
+
+    fun duplicateBill(bill: Bill) {
+        viewModelScope.launch {
+            val copy = bill.copy(
+                id = 0,
+                name = "${bill.name} (Copy)",
+                createdAt = System.currentTimeMillis()
+            )
+            val id = repo.insertBill(copy)
+            val saved = repo.getBillById(id) ?: return@launch
+            if (saved.isEnabled) {
+                ReminderScheduler.scheduleReminder(getApplication(), saved)
+            }
+            _snackbarMessage.emit("${bill.name} duplicated")
+        }
+    }
+
+    fun markAsPaid(bill: Bill, customAmount: Double? = null, confirmationNumber: String = "") {
         viewModelScope.launch {
             val nextDue = ReminderScheduler.getNextDueDate(bill)
             val existing = repo.getPaymentForBillDue(bill.id, nextDue)
             if (existing == null) {
                 repo.insertPayment(
-                    Payment(billId = bill.id, amount = bill.amount, dueDate = nextDue)
+                    Payment(
+                        billId = bill.id,
+                        amount = customAmount ?: bill.amount,
+                        dueDate = nextDue,
+                        confirmationNumber = confirmationNumber
+                    )
                 )
             }
             val nm = getApplication<Application>().getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
@@ -214,6 +267,8 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
 
     suspend fun getLifetimeSpending(billId: Long): Double = repo.getLifetimeSpending(billId)
 
+    suspend fun getOnTimeStreak(billId: Long): Int = repo.getOnTimeStreak(billId)
+
     // Backup/restore
     fun exportJson(uri: Uri) {
         viewModelScope.launch {
@@ -224,7 +279,6 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
     fun importJson(uri: Uri, onComplete: (Int) -> Unit) {
         viewModelScope.launch {
             val count = BackupManager.importJson(getApplication(), uri, repo)
-            // Reschedule all reminders
             val bills = repo.getAllBillsList()
             ReminderScheduler.scheduleAllReminders(getApplication(), bills)
             loadChartData()
