@@ -17,10 +17,20 @@ android {
         versionName = "2.1.1"
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("${rootProject.projectDir}/billminder.jks")
+            storePassword = "billminder2025"
+            keyAlias = "billminder"
+            keyPassword = "billminder2025"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
