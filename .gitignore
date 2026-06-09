@@ -12,3 +12,7 @@ local.properties
 *.apk
 CLAUDE.md
 billminder.jks
+
+# Markdown files local-only (except README)
+*.md
+!README.md
