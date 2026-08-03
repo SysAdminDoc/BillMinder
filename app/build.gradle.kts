@@ -73,6 +73,7 @@ dependencies {
     implementation(libs.androidx.glance.material3)
     implementation(libs.androidx.biometric)
     implementation(libs.androidx.fragment)
+    implementation(libs.play.services.location)
     implementation(libs.gson)
     testImplementation("junit:junit:4.13.2")
     debugImplementation(libs.androidx.ui.tooling)
