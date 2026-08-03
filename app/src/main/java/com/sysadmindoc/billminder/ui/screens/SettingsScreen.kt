@@ -2,6 +2,7 @@ package com.sysadmindoc.billminder.ui.screens
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -27,8 +28,12 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.sysadmindoc.billminder.data.BillCategory
 import com.sysadmindoc.billminder.data.BudgetPrefs
+import com.sysadmindoc.billminder.data.CsvField
 import com.sysadmindoc.billminder.data.CurrencyCatalog
 import com.sysadmindoc.billminder.data.CurrencyConverter
+import com.sysadmindoc.billminder.data.CsvImport
+import com.sysadmindoc.billminder.data.CsvImportMapping
+import com.sysadmindoc.billminder.data.CsvTable
 import com.sysadmindoc.billminder.notification.ReminderPrefs
 import com.sysadmindoc.billminder.notification.GeofenceManager
 import com.sysadmindoc.billminder.notification.GeofencePrefs
@@ -48,6 +53,9 @@ fun SettingsScreen(
     var showCurrencyMenu by remember { mutableStateOf(false) }
     var showFxRates by remember { mutableStateOf(false) }
     var showBudgetDialog by remember { mutableStateOf(false) }
+    var csvUri by remember { mutableStateOf<Uri?>(null) }
+    var csvTable by remember { mutableStateOf<CsvTable?>(null) }
+    var showCsvMapping by remember { mutableStateOf(false) }
     var fullScreenReminders by remember { mutableStateOf(ReminderPrefs.isFullScreenEnabled(context)) }
     var showGeofenceDialog by remember { mutableStateOf(false) }
     var homeGeofenceEnabled by remember { mutableStateOf(GeofencePrefs.get(context)?.enabled == true) }
@@ -91,6 +99,22 @@ fun SettingsScreen(
         uri?.let {
             viewModel.importJson(it) { count ->
                 Toast.makeText(context, "Imported $count bills", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    val importCsvLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let { selectedUri ->
+            viewModel.previewCsv(selectedUri) { table, error ->
+                if (table != null) {
+                    csvUri = selectedUri
+                    csvTable = table
+                    showCsvMapping = true
+                } else {
+                    Toast.makeText(context, error ?: "Unable to read CSV", Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
@@ -410,6 +434,42 @@ fun SettingsScreen(
             subtitle = "Export payment history as spreadsheet"
         ) {
             exportCsvLauncher.launch("billminder_payments.csv")
+        }
+
+        SettingsRow(
+            icon = Icons.Filled.FileUpload,
+            title = "Import CSV",
+            subtitle = "Map columns from a spreadsheet into bills and payments"
+        ) {
+            importCsvLauncher.launch(arrayOf("text/csv", "text/plain", "application/vnd.ms-excel"))
+        }
+
+        if (showCsvMapping && csvTable != null && csvUri != null) {
+            CsvMappingDialog(
+                table = csvTable!!,
+                onImport = { mapping ->
+                    viewModel.importCsv(csvUri!!, mapping) { result, error ->
+                        if (result != null) {
+                            showCsvMapping = false
+                            csvUri = null
+                            csvTable = null
+                            Toast.makeText(
+                                context,
+                                "Imported ${result.billsImported} bills and ${result.paymentsImported} payments" +
+                                    if (result.rowsSkipped > 0) " (${result.rowsSkipped} rows skipped)" else "",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        } else {
+                            Toast.makeText(context, error ?: "Unable to import CSV", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                },
+                onDismiss = {
+                    showCsvMapping = false
+                    csvUri = null
+                    csvTable = null
+                }
+            )
         }
 
         SettingsRow(
@@ -831,6 +891,119 @@ private fun CategoryBudgetsDialog(
         confirmButton = {
             TextButton(onClick = { onSave(values.toMap()) }) {
                 Text("Save", color = CatBlue)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = CatSubtext0)
+            }
+        }
+    )
+}
+
+@Composable
+private fun CsvMappingDialog(
+    table: CsvTable,
+    onImport: (CsvImportMapping) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val fields = listOf(
+        CsvField.NAME,
+        CsvField.AMOUNT,
+        CsvField.DUE_DATE,
+        CsvField.DUE_DAY,
+        CsvField.CATEGORY,
+        CsvField.RECURRENCE,
+        CsvField.AUTO_PAY,
+        CsvField.CURRENCY,
+        CsvField.NOTES,
+        CsvField.PAYMENT_DATE,
+        CsvField.PAYMENT_AMOUNT,
+        CsvField.PAYMENT_CURRENCY,
+        CsvField.CONFIRMATION
+    )
+    val selected = remember {
+        mutableStateMapOf<CsvField, Int?>().apply {
+            putAll(CsvImport.suggestedMapping(table.headers))
+        }
+    }
+    var expandedField by remember { mutableStateOf<CsvField?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CatSurface0,
+        title = { Text("Map CSV Columns", color = CatText) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    "${table.rows.size} rows detected. Required fields are marked with *.",
+                    color = CatSubtext0,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                fields.forEach { field ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            field.label + if (field.required) " *" else "",
+                            color = if (field.required) CatText else CatSubtext1,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(0.9f)
+                        )
+                        Box(modifier = Modifier.weight(1.1f)) {
+                            TextButton(onClick = { expandedField = field }) {
+                                Text(
+                                    selected[field]?.let { table.headers.getOrNull(it) } ?: "Skip",
+                                    color = CatBlue,
+                                    maxLines = 1
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = expandedField == field,
+                                onDismissRequest = { expandedField = null },
+                                containerColor = CatSurface0
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Skip", color = CatSubtext0) },
+                                    onClick = {
+                                        selected[field] = null
+                                        expandedField = null
+                                    }
+                                )
+                                table.headers.forEachIndexed { index, header ->
+                                    DropdownMenuItem(
+                                        text = { Text(header, color = CatText) },
+                                        onClick = {
+                                            selected[field] = index
+                                            expandedField = null
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                error?.let { Text(it, color = CatRed, style = MaterialTheme.typography.bodySmall) }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val mapping = CsvImportMapping(selected.toMap())
+                    if (mapping.isReady()) {
+                        error = null
+                        onImport(mapping)
+                    } else {
+                        error = "Map Bill name, Bill amount, and Due date or Due day before importing."
+                    }
+                }
+            ) {
+                Text("Import", color = CatBlue)
             }
         },
         dismissButton = {

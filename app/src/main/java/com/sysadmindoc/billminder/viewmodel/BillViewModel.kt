@@ -10,6 +10,8 @@ import com.sysadmindoc.billminder.security.EncryptedAttachment
 import com.sysadmindoc.billminder.security.EncryptedAttachmentStore
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.Calendar
 
 data class BillWithStatus(
@@ -468,6 +470,38 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
             ReminderScheduler.scheduleAllReminders(getApplication(), bills)
             loadChartData()
             onComplete(count)
+        }
+    }
+
+    fun previewCsv(uri: Uri, onComplete: (CsvTable?, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val table = withContext(Dispatchers.IO) {
+                    CsvImport.read(getApplication(), uri)
+                }
+                if (table == null || table.headers.isEmpty()) {
+                    onComplete(null, "The CSV file is empty or unreadable")
+                } else {
+                    onComplete(table, null)
+                }
+            } catch (error: Exception) {
+                onComplete(null, error.message ?: "Unable to read CSV")
+            }
+        }
+    }
+
+    fun importCsv(uri: Uri, mapping: CsvImportMapping, onComplete: (CsvImportResult?, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    BackupManager.importCsv(getApplication(), uri, repo, mapping)
+                }
+                ReminderScheduler.scheduleAllReminders(getApplication(), repo.getAllBillsList())
+                loadChartData()
+                onComplete(result, null)
+            } catch (error: Exception) {
+                onComplete(null, error.message ?: "Unable to import CSV")
+            }
         }
     }
 

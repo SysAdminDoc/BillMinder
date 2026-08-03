@@ -59,6 +59,96 @@ object BackupManager {
         return count
     }
 
+    suspend fun importCsv(
+        context: Context,
+        uri: Uri,
+        repo: BillRepository,
+        mapping: CsvImportMapping
+    ): CsvImportResult {
+        val table = CsvImport.read(context, uri) ?: return CsvImportResult(0, 0, 0)
+        if (!mapping.isReady()) return CsvImportResult(0, 0, table.rows.size)
+
+        val billIds = mutableMapOf<String, Long>()
+        var billsImported = 0
+        var paymentsImported = 0
+        var rowsSkipped = 0
+
+        table.rows.forEach { row ->
+            val rawName = table.value(row, CsvField.NAME, mapping)
+            val rawAmount = table.value(row, CsvField.AMOUNT, mapping)
+            val recurrence = CsvValueParser.recurrence(table.value(row, CsvField.RECURRENCE, mapping))
+            val dueDate = table.value(row, CsvField.DUE_DATE, mapping)
+                .takeIf { it.isNotBlank() }
+                ?.let(CsvValueParser::dateMillis)
+            val dueDay = table.value(row, CsvField.DUE_DAY, mapping)
+                .toIntOrNull()
+                ?: dueDate?.let { CsvValueParser.dueDay(it, recurrence) }
+            val amount = CsvValueParser.amount(rawAmount)
+            val validDueDay = dueDay != null && dueDay in if (
+                recurrence == Recurrence.WEEKLY || recurrence == Recurrence.BIWEEKLY
+            ) 1..7 else 1..31
+
+            if (rawName.isBlank() || amount == null || amount <= 0.0 || !validDueDay) {
+                rowsSkipped++
+                return@forEach
+            }
+
+            val name = MerchantNormalizer.normalize(rawName)
+            val currency = CurrencyCatalog.find(table.value(row, CsvField.CURRENCY, mapping)).code
+            val dueMonth = if (recurrence == Recurrence.ONE_TIME) dueDate?.let(CsvValueParser::month) else null
+            val dueYear = if (recurrence == Recurrence.ONE_TIME) dueDate?.let(CsvValueParser::year) else null
+            val key = listOf(
+                name.lowercase(java.util.Locale.ROOT),
+                recurrence.name,
+                dueDay,
+                dueMonth,
+                dueYear,
+                currency
+            ).joinToString("|")
+            val billId = billIds[key] ?: repo.insertBill(
+                Bill(
+                    name = name,
+                    amount = amount,
+                    dueDay = dueDay,
+                    dueMonth = dueMonth,
+                    dueYear = dueYear,
+                    category = CsvValueParser.category(table.value(row, CsvField.CATEGORY, mapping)),
+                    recurrence = recurrence,
+                    isAutoPay = CsvValueParser.boolean(table.value(row, CsvField.AUTO_PAY, mapping)),
+                    notes = table.value(row, CsvField.NOTES, mapping),
+                    currency = currency
+                )
+            ).also {
+                billIds[key] = it
+                billsImported++
+            }
+
+            val paymentDate = table.value(row, CsvField.PAYMENT_DATE, mapping)
+                .takeIf { it.isNotBlank() }
+                ?.let(CsvValueParser::dateMillis)
+            val paymentAmount = table.value(row, CsvField.PAYMENT_AMOUNT, mapping)
+                .takeIf { it.isNotBlank() }
+                ?.let(CsvValueParser::amount)
+                ?: paymentDate?.let { amount }
+            if (paymentDate != null && paymentAmount != null && paymentAmount > 0.0) {
+                repo.insertPayment(
+                    Payment(
+                        billId = billId,
+                        amount = paymentAmount,
+                        paidAt = paymentDate,
+                        dueDate = dueDate ?: paymentDate,
+                        confirmationNumber = table.value(row, CsvField.CONFIRMATION, mapping),
+                        currency = CurrencyCatalog.find(
+                            table.value(row, CsvField.PAYMENT_CURRENCY, mapping).ifBlank { currency }
+                        ).code
+                    )
+                )
+                paymentsImported++
+            }
+        }
+        return CsvImportResult(billsImported, paymentsImported, rowsSkipped)
+    }
+
     suspend fun exportYearEndCsv(context: Context, uri: Uri, repo: BillRepository, year: Int) {
         val bills = repo.getAllBillsForExport()
         val payments = repo.getAllPaymentsForExport()
