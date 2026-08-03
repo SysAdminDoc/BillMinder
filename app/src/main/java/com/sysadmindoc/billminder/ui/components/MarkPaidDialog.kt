@@ -1,24 +1,59 @@
 package com.sysadmindoc.billminder.ui.components
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.sysadmindoc.billminder.data.Bill
+import com.sysadmindoc.billminder.security.EncryptedAttachment
+import com.sysadmindoc.billminder.security.EncryptedAttachmentStore
 import com.sysadmindoc.billminder.ui.theme.*
+import kotlinx.coroutines.launch
 
 @Composable
 fun MarkPaidDialog(
     bill: Bill,
     onDismiss: () -> Unit,
-    onConfirm: (amount: Double, confirmationNumber: String) -> Unit
+    onConfirm: (amount: Double, confirmationNumber: String, attachment: EncryptedAttachment?) -> Unit
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var amount by remember { mutableStateOf(bill.amount.toBigDecimal().stripTrailingZeros().toPlainString()) }
     var confirmationNumber by remember { mutableStateOf("") }
+    var attachment by remember { mutableStateOf<EncryptedAttachment?>(null) }
+    var isImporting by remember { mutableStateOf(false) }
+    var handedOff by remember { mutableStateOf(false) }
+    val currentAttachment by rememberUpdatedState(attachment)
+
+    val attachmentPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                isImporting = true
+                attachment?.let { EncryptedAttachmentStore.delete(context, it.fileName) }
+                attachment = EncryptedAttachmentStore.importUri(context, uri)
+                isImporting = false
+            }
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            if (!handedOff) currentAttachment?.let { EncryptedAttachmentStore.delete(context, it.fileName) }
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -62,14 +97,47 @@ fun MarkPaidDialog(
                         cursorColor = CatBlue
                     )
                 )
+                OutlinedButton(
+                    onClick = { attachmentPicker.launch("*/*") },
+                    enabled = !isImporting,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Filled.AttachFile, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        when {
+                            isImporting -> "Encrypting receipt..."
+                            attachment != null -> "Receipt attached"
+                            else -> "Attach receipt (image or PDF)"
+                        }
+                    )
+                }
+                attachment?.let { selected ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(selected.displayName, color = CatSubtext0, style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.weight(1f))
+                        IconButton(onClick = {
+                            EncryptedAttachmentStore.delete(context, selected.fileName)
+                            attachment = null
+                        }) {
+                            Icon(Icons.Filled.Close, contentDescription = "Remove receipt", tint = CatRed)
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
                     val parsed = amount.toDoubleOrNull() ?: bill.amount
-                    onConfirm(parsed, confirmationNumber.trim())
+                    handedOff = true
+                    onConfirm(parsed, confirmationNumber.trim(), attachment)
                 },
+                enabled = !isImporting,
                 colors = ButtonDefaults.buttonColors(containerColor = CatGreen, contentColor = CatCrust),
                 shape = RoundedCornerShape(10.dp)
             ) {

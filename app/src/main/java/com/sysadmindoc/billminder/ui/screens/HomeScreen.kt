@@ -68,8 +68,8 @@ fun HomeScreen(
         MarkPaidDialog(
             bill = bill,
             onDismiss = { showMarkPaidDialog = null },
-            onConfirm = { amount, conf ->
-                viewModel.markAsPaid(bill, amount, conf)
+            onConfirm = { amount, conf, attachment ->
+                viewModel.markAsPaid(bill, amount, conf, attachment)
                 showMarkPaidDialog = null
             }
         )

@@ -20,17 +20,20 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import com.sysadmindoc.billminder.data.Bill
 import com.sysadmindoc.billminder.data.BillPayee
 import com.sysadmindoc.billminder.data.HolidayCalendar
 import com.sysadmindoc.billminder.data.PayeeMath
 import com.sysadmindoc.billminder.data.Payment
 import com.sysadmindoc.billminder.notification.ReminderScheduler
+import com.sysadmindoc.billminder.security.EncryptedAttachmentStore
 import com.sysadmindoc.billminder.ui.components.getCategoryIcon
 import com.sysadmindoc.billminder.ui.theme.*
 import com.sysadmindoc.billminder.viewmodel.BillViewModel
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,6 +44,7 @@ fun BillDetailScreen(
     onEdit: (Long) -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var bill by remember { mutableStateOf<Bill?>(null) }
     var lifetimeSpending by remember { mutableDoubleStateOf(0.0) }
     var onTimeStreak by remember { mutableIntStateOf(0) }
@@ -345,7 +349,26 @@ fun BillDetailScreen(
             }
 
             items(payments, key = { it.id }) { payment ->
-                PaymentRow(payment, dateTimeFormat)
+                PaymentRow(
+                    payment = payment,
+                    dateFormat = dateTimeFormat,
+                    onOpenAttachment = {
+                        scope.launch {
+                            val file = EncryptedAttachmentStore.decryptToCache(context, payment.attachmentFile)
+                            if (file != null) {
+                                val uri = FileProvider.getUriForFile(
+                                    context,
+                                    "${context.packageName}.files",
+                                    file
+                                )
+                                context.startActivity(Intent(Intent.ACTION_VIEW).apply {
+                                    setDataAndType(uri, payment.attachmentMime)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                })
+                            }
+                        }
+                    }
+                )
             }
 
             item { Spacer(Modifier.height(16.dp)) }
@@ -365,7 +388,11 @@ private fun DetailRow(label: String, value: String) {
 }
 
 @Composable
-private fun PaymentRow(payment: Payment, dateFormat: SimpleDateFormat) {
+private fun PaymentRow(
+    payment: Payment,
+    dateFormat: SimpleDateFormat,
+    onOpenAttachment: () -> Unit
+) {
     Card(shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = CatSurface0)) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(14.dp),
@@ -381,8 +408,23 @@ private fun PaymentRow(payment: Payment, dateFormat: SimpleDateFormat) {
                 if (payment.note.isNotBlank()) {
                     Text(payment.note, style = MaterialTheme.typography.labelMedium, color = CatSubtext0)
                 }
+                if (payment.attachmentName.isNotBlank()) {
+                    Text(
+                        "Receipt: ${payment.attachmentName}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = CatBlue,
+                        maxLines = 1
+                    )
+                }
             }
-            Text("$${"%,.2f".format(payment.amount)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = CatGreen)
+            Column(horizontalAlignment = Alignment.End) {
+                Text("$${"%,.2f".format(payment.amount)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = CatGreen)
+                if (payment.attachmentName.isNotBlank()) {
+                    TextButton(onClick = onOpenAttachment, contentPadding = PaddingValues(0.dp)) {
+                        Text("Open", color = CatBlue, style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            }
         }
     }
 }

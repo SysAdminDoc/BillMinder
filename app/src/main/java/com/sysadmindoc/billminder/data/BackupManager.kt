@@ -8,7 +8,7 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 
 data class BackupData(
-    val version: Int = 3,
+    val version: Int = 4,
     val exportedAt: Long = System.currentTimeMillis(),
     val bills: List<Bill>,
     val payments: List<Payment>

@@ -8,7 +8,7 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Bill::class, Payment::class, BillPayee::class], version = 4, exportSchema = false)
+@Database(entities = [Bill::class, Payment::class, BillPayee::class], version = 5, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class BillDatabase : RoomDatabase() {
     abstract fun billDao(): BillDao
@@ -46,6 +46,14 @@ abstract class BillDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE payments ADD COLUMN attachmentName TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE payments ADD COLUMN attachmentFile TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE payments ADD COLUMN attachmentMime TEXT NOT NULL DEFAULT 'application/octet-stream'")
+            }
+        }
+
         fun getDatabase(context: Context): BillDatabase {
             return INSTANCE ?: synchronized(this) {
                 Room.databaseBuilder(
@@ -53,7 +61,7 @@ abstract class BillDatabase : RoomDatabase() {
                     BillDatabase::class.java,
                     "billminder.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .fallbackToDestructiveMigration()
                     .build()
                     .also { INSTANCE = it }

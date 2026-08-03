@@ -6,6 +6,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.sysadmindoc.billminder.data.*
 import com.sysadmindoc.billminder.notification.ReminderScheduler
+import com.sysadmindoc.billminder.security.EncryptedAttachment
+import com.sysadmindoc.billminder.security.EncryptedAttachmentStore
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -284,7 +286,12 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
 
     suspend fun getPayeesForBill(billId: Long): List<BillPayee> = repo.getPayeesForBill(billId)
 
-    fun markAsPaid(bill: Bill, customAmount: Double? = null, confirmationNumber: String = "") {
+    fun markAsPaid(
+        bill: Bill,
+        customAmount: Double? = null,
+        confirmationNumber: String = "",
+        attachment: EncryptedAttachment? = null
+    ) {
         viewModelScope.launch {
             val nextDue = ReminderScheduler.getNextDueDate(bill)
             val existing = repo.getPaymentForBillDue(bill.id, nextDue)
@@ -294,9 +301,14 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
                         billId = bill.id,
                         amount = customAmount ?: bill.amount,
                         dueDate = nextDue,
-                        confirmationNumber = confirmationNumber
+                        confirmationNumber = confirmationNumber,
+                        attachmentName = attachment?.displayName.orEmpty(),
+                        attachmentFile = attachment?.fileName.orEmpty(),
+                        attachmentMime = attachment?.mimeType ?: "application/octet-stream"
                     )
                 )
+            } else if (attachment != null) {
+                EncryptedAttachmentStore.delete(getApplication(), attachment.fileName)
             }
             val nm = getApplication<Application>().getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
             nm.cancel(bill.id.toInt())
@@ -309,7 +321,10 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val nextDue = ReminderScheduler.getNextDueDate(bill)
             val payment = repo.getPaymentForBillDue(bill.id, nextDue)
-            payment?.let { repo.deletePayment(it) }
+            payment?.let {
+                EncryptedAttachmentStore.delete(getApplication(), it.attachmentFile)
+                repo.deletePayment(it)
+            }
             loadChartData()
         }
     }

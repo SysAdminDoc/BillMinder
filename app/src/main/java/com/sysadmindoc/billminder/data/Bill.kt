@@ -86,5 +86,8 @@ data class Payment(
     val paidAt: Long = System.currentTimeMillis(),
     val dueDate: Long,
     val note: String = "",
-    val confirmationNumber: String = ""
+    val confirmationNumber: String = "",
+    val attachmentName: String = "",
+    val attachmentFile: String = "",
+    val attachmentMime: String = "application/octet-stream"
 )
