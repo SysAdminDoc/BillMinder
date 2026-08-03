@@ -222,11 +222,12 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
 
     fun saveBill(bill: Bill, payees: List<PayeeDraft>? = null) {
         viewModelScope.launch {
-            val id = if (bill.id == 0L) {
-                repo.insertBill(bill)
+            val normalizedBill = bill.copy(name = MerchantNormalizer.normalize(bill.name))
+            val id = if (normalizedBill.id == 0L) {
+                repo.insertBill(normalizedBill)
             } else {
-                repo.updateBill(bill)
-                bill.id
+                repo.updateBill(normalizedBill)
+                normalizedBill.id
             }
             val saved = repo.getBillById(id) ?: return@launch
             if (payees != null) {

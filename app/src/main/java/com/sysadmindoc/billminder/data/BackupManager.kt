@@ -37,7 +37,8 @@ object BackupManager {
         val billIdMap = mutableMapOf<Long, Long>()
         var count = 0
         backup.bills.forEach { bill ->
-            val newId = repo.insertBill(bill.copy(id = 0))
+            val normalized = bill.copy(id = 0, name = MerchantNormalizer.normalize(bill.name))
+            val newId = repo.insertBill(normalized)
             billIdMap[bill.id] = newId
             count++
         }

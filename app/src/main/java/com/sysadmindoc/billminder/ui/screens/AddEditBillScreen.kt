@@ -168,6 +168,15 @@ fun AddEditBillScreen(
                 modifier = Modifier.fillMaxWidth(),
                 colors = billFieldColors()
             )
+            val normalizedName = MerchantNormalizer.normalize(name)
+            if (name.isNotBlank() && normalizedName != name.trim()) {
+                Text(
+                    "Recognized merchant: $normalizedName",
+                    color = CatBlue,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(start = 4.dp)
+                )
+            }
 
             OutlinedTextField(
                 value = amount,

@@ -9,6 +9,7 @@ All notable changes to BillMinder will be documented in this file.
 - Hardened CSV quoting, backup restore ID remapping, and added JVM coverage for amount validation and holiday handling.
 - Added split bills with Room-backed payees, percentage validation, share calculations, and undo/duplicate preservation.
 - Added encrypted image/PDF receipt attachments to payment records, with private-file viewing and cleanup on undo.
+- Added a 400+ entry merchant alias normalizer for bill entry and JSON restore, including common statement descriptors.
 
 ## [v2.1.1] - 2026-04-29
 
