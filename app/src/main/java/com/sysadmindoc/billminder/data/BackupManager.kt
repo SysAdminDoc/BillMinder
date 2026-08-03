@@ -34,13 +34,16 @@ object BackupManager {
         } ?: return 0
 
         val backup = gson.fromJson(json, BackupData::class.java)
+        val billIdMap = mutableMapOf<Long, Long>()
         var count = 0
         backup.bills.forEach { bill ->
-            repo.insertBill(bill.copy(id = 0))
+            val newId = repo.insertBill(bill.copy(id = 0))
+            billIdMap[bill.id] = newId
             count++
         }
         backup.payments.forEach { payment ->
-            repo.insertPayment(payment.copy(id = 0))
+            val newBillId = billIdMap[payment.billId] ?: return@forEach
+            repo.insertPayment(payment.copy(id = 0, billId = newBillId))
         }
         return count
     }

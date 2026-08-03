@@ -16,6 +16,7 @@ A bill tracking and reminder app for Android. Never miss a payment again.
 - **6 Recurrence Types** - Weekly, Bi-Weekly, Monthly, Quarterly, Yearly, One-Time
 - **Quick Mark Paid** - One-tap from home screen or notification
 - **Swipe-to-Delete** - Swipe left on any bill to delete
+- **Variable Amounts** - Track expected, minimum, and maximum amounts for utilities
 
 ### Reminders (Alarm-Style)
 - **Exact Alarms** - Uses AlarmManager.setAlarmClock() for reliable delivery (same as alarm clock apps)
@@ -24,6 +25,7 @@ A bill tracking and reminder app for Android. Never miss a payment again.
 - **Snooze** - 1 hour or tomorrow snooze directly from notification
 - **Boot Persistence** - Reminders survive device restarts
 - **Overdue Notifications** - Persistent (non-dismissible) for overdue bills
+- **Cascading Reminders** - Dismissed reminders escalate at 4 hours, 24 hours, and overdue
 
 ### Dashboard
 - **Monthly Summary** - Total due, paid, remaining with animated progress bar
@@ -41,18 +43,23 @@ A bill tracking and reminder app for Android. Never miss a payment again.
 - **Lifetime Spending** - Total across all bills
 - **Category Pie Chart** - Animated donut chart with legend
 - **Monthly Trend** - 6-month line chart with grid
+- **Forecast** - 30/60/90-day upcoming totals
+- **What-If Planning** - Toggle recurring bills to preview annual savings
 - **Per-Bill Lifetime** - Total spent on each individual bill with average
 
 ### Data
 - **JSON Backup/Restore** - Full export and import of all data
 - **CSV Export** - Payment history as spreadsheet
+- **Year-End Export** - Tax-ready CSV grouped by category
 - **Room Database** - SQLite with migration support
 
 ### Security
 - **Biometric Lock** - Fingerprint/face unlock to protect financial data
+- **PIN Fallback** - Salted PIN fallback with configurable auto-lock, screenshot protection, and duress mode
 
 ### Widget
 - **Home Screen Widget** - Glance-based widget showing upcoming bills, amounts, and days until due
+- **Widget Variants** - Next 3 bills and current-month payment progress widgets
 
 ### UI/UX
 - **Bottom Navigation** - Home, Calendar, Stats, Settings tabs

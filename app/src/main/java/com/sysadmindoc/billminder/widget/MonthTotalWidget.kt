@@ -20,6 +20,7 @@ import com.sysadmindoc.billminder.data.BillDatabase
 import com.sysadmindoc.billminder.data.BillRepository
 import com.sysadmindoc.billminder.notification.ReminderScheduler
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -29,6 +30,21 @@ class MonthTotalWidget : GlanceAppWidget() {
         val db = BillDatabase.getDatabase(context)
         val repo = BillRepository(db.billDao())
         val bills = repo.getAllBillsList()
+        val monthStart = Calendar.getInstance().apply {
+            set(Calendar.DAY_OF_MONTH, 1)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        val monthEnd = Calendar.getInstance().apply {
+            set(Calendar.DAY_OF_MONTH, 1)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+            add(Calendar.MONTH, 1)
+        }.timeInMillis
 
         var totalDue = 0.0
         var totalPaid = 0.0
@@ -36,13 +52,22 @@ class MonthTotalWidget : GlanceAppWidget() {
         var totalCount = 0
 
         bills.forEach { bill ->
-            val nextDue = ReminderScheduler.getNextDueDate(bill)
-            val payment = repo.getPaymentForBillDue(bill.id, nextDue)
-            totalDue += bill.amount
-            totalCount++
-            if (payment != null) {
-                totalPaid += payment.amount
-                paidCount++
+            var nextDue = ReminderScheduler.getNextDueDate(bill)
+            val seen = mutableSetOf<Long>()
+            while (nextDue < monthEnd && seen.add(nextDue)) {
+                if (nextDue >= monthStart) {
+                    val payment = repo.getPaymentForBillDue(bill.id, nextDue)
+                    totalDue += bill.amount
+                    totalCount++
+                    if (payment != null) {
+                        totalPaid += payment.amount
+                        paidCount++
+                    }
+                }
+                val following = ReminderScheduler.getNextDueDateAfter(bill, nextDue)
+                    ?: break
+                if (following <= nextDue) break
+                nextDue = following
             }
         }
 
