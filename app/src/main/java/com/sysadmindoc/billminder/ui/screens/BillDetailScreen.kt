@@ -2,6 +2,8 @@ package com.sysadmindoc.billminder.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -23,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.sysadmindoc.billminder.data.Bill
 import com.sysadmindoc.billminder.data.BillPayee
+import com.sysadmindoc.billminder.data.CalendarSync
 import com.sysadmindoc.billminder.data.CurrencyFormatter
 import com.sysadmindoc.billminder.data.HolidayCalendar
 import com.sysadmindoc.billminder.data.PayeeMath
@@ -113,6 +116,21 @@ fun BillDetailScreen(
                                     leadingIcon = { Icon(Icons.Filled.OpenInBrowser, null, tint = CatGreen) }
                                 )
                             }
+                            DropdownMenuItem(
+                                text = { Text("Add to Calendar", color = CatText) },
+                                onClick = {
+                                    val added = CalendarSync.openInsert(
+                                        context,
+                                        currentBill,
+                                        ReminderScheduler.getNextDueDate(currentBill)
+                                    )
+                                    if (!added) {
+                                        Toast.makeText(context, "No calendar app is available", Toast.LENGTH_LONG).show()
+                                    }
+                                    showMoreMenu = false
+                                },
+                                leadingIcon = { Icon(Icons.Filled.Event, null, tint = CatBlue) }
+                            )
                             DropdownMenuItem(
                                 text = { Text("Share", color = CatText) },
                                 onClick = {
@@ -300,6 +318,28 @@ fun BillDetailScreen(
                                 Spacer(Modifier.width(8.dp))
                                 Text("Pay Now", fontWeight = FontWeight.Bold)
                             }
+                        }
+
+                        Spacer(Modifier.height(10.dp))
+                        OutlinedButton(
+                            onClick = {
+                                val added = CalendarSync.openInsert(
+                                    context,
+                                    currentBill,
+                                    nextDue
+                                )
+                                if (!added) {
+                                    Toast.makeText(context, "No calendar app is available", Toast.LENGTH_LONG).show()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = CatBlue),
+                            border = BorderStroke(1.dp, CatSurface1),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Filled.Event, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Add next due date to Calendar")
                         }
                     }
                 }

@@ -13,6 +13,7 @@ All notable changes to BillMinder will be documented in this file.
 - Added native bill/payment currencies, offline dashboard FX conversion, manual rate overrides, and currency-aware widgets, notifications, and exports.
 - Added an opt-in full-screen alarm reminder activity with mark-paid, snooze, and dismiss actions.
 - Added an opt-in home geofence that reminds about the next unpaid bills after entering and dwelling within a configurable radius.
+- Added an opt-in calendar handoff for the next due date, preserving recurring bill cadence in the calendar composer.
 
 ## [v2.1.1] - 2026-04-29
 
