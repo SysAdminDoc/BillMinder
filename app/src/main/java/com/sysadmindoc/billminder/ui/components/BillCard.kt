@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sysadmindoc.billminder.data.BillCategory
+import com.sysadmindoc.billminder.data.CurrencyFormatter
 import com.sysadmindoc.billminder.data.HolidayCalendar
 import com.sysadmindoc.billminder.ui.theme.*
 import com.sysadmindoc.billminder.viewmodel.BillWithStatus
@@ -153,14 +154,14 @@ fun BillCard(
             // Amount + pay button
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    text = "$${"%,.2f".format(bill.amount)}",
+                    text = CurrencyFormatter.format(bill.amount, bill.currency),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = if (billWithStatus.isPaidThisCycle) CatSubtext0 else CatText
                 )
                 if (bill.isVariableAmount && bill.amountMin != null && bill.amountMax != null) {
                     Text(
-                        text = "$${"%,.0f".format(bill.amountMin)}-$${"%,.0f".format(bill.amountMax)}",
+                        text = "${CurrencyFormatter.format(bill.amountMin, bill.currency)}-${CurrencyFormatter.format(bill.amountMax, bill.currency)}",
                         style = MaterialTheme.typography.labelSmall,
                         color = CatOverlay0
                     )

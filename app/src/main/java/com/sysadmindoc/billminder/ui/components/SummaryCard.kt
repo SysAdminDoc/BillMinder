@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.sysadmindoc.billminder.data.CurrencyFormatter
 import com.sysadmindoc.billminder.ui.theme.*
 import com.sysadmindoc.billminder.viewmodel.MonthlySummary
 import java.text.SimpleDateFormat
@@ -62,7 +63,7 @@ fun SummaryCard(summary: MonthlySummary, modifier: Modifier = Modifier) {
                             color = CatSubtext0
                         )
                         Text(
-                            text = "$${"%,.2f".format(summary.remaining)}",
+                            text = CurrencyFormatter.format(summary.remaining, summary.currency),
                             fontSize = 32.sp,
                             fontWeight = FontWeight.Bold,
                             color = when {
@@ -122,12 +123,12 @@ fun SummaryCard(summary: MonthlySummary, modifier: Modifier = Modifier) {
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "Paid: $${"%,.2f".format(summary.totalPaid)}",
+                        text = "Paid: ${CurrencyFormatter.format(summary.totalPaid, summary.currency)}",
                         style = MaterialTheme.typography.labelMedium,
                         color = CatGreen
                     )
                     Text(
-                        text = "Total: $${"%,.2f".format(summary.totalDue)}",
+                        text = "Total: ${CurrencyFormatter.format(summary.totalDue, summary.currency)}",
                         style = MaterialTheme.typography.labelMedium,
                         color = CatSubtext0
                     )
@@ -159,7 +160,7 @@ fun SummaryCard(summary: MonthlySummary, modifier: Modifier = Modifier) {
                                     else -> CatSubtext0
                                 }
                             )
-                            Text("$${"%,.2f".format(next.bill.amount)}", style = MaterialTheme.typography.bodyMedium, color = CatText, fontWeight = FontWeight.Bold)
+                            Text(CurrencyFormatter.format(next.bill.amount, next.bill.currency), style = MaterialTheme.typography.bodyMedium, color = CatText, fontWeight = FontWeight.Bold)
                         }
                     }
                 }

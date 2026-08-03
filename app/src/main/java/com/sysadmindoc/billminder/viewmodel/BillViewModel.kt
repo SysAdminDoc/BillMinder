@@ -28,7 +28,8 @@ data class MonthlySummary(
     val paidCount: Int,
     val overdueCount: Int,
     val nextDueBill: BillWithStatus? = null,
-    val allPaid: Boolean = false
+    val allPaid: Boolean = false,
+    val currency: String = "USD"
 )
 
 data class ForecastData(
@@ -45,7 +46,8 @@ data class ChartData(
     val monthlyTrend: List<Pair<String, Double>> = emptyList(),
     val lifetimeTotal: Double = 0.0,
     val yearlyProjection: Double = 0.0,
-    val forecast: ForecastData = ForecastData()
+    val forecast: ForecastData = ForecastData(),
+    val currency: String = "USD"
 )
 
 class BillViewModel(application: Application) : AndroidViewModel(application) {
@@ -62,6 +64,10 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _filterCategory = MutableStateFlow<BillCategory?>(null)
     val filterCategory: StateFlow<BillCategory?> = _filterCategory
+
+    private val _displayCurrency = MutableStateFlow(CurrencyPrefs.getDisplayCurrency(application))
+    val displayCurrency: StateFlow<String> = _displayCurrency.asStateFlow()
+    private val _currencySettingsRevision = MutableStateFlow(0)
 
     // Undo delete state
     private val _lastDeletedBill = MutableStateFlow<Bill?>(null)
@@ -118,7 +124,12 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val monthlySummary: StateFlow<MonthlySummary> = combine(bills, payments) { billList, paymentList ->
+    val monthlySummary: StateFlow<MonthlySummary> = combine(bills, payments, _currencySettingsRevision) { billList, paymentList, _ ->
+        val targetCurrency = _displayCurrency.value
+        val manualRates = CurrencyPrefs.getManualRates(getApplication())
+        val toDisplay: (Double, String) -> Double = { amount, currency ->
+            CurrencyConverter.convert(amount, currency, targetCurrency, manualRates)
+        }
         val statuses = billList.map { bill ->
             val nextDue = ReminderScheduler.getNextDueDate(bill)
             val now = System.currentTimeMillis()
@@ -129,8 +140,17 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         }
         val paid = statuses.filter { it.isPaidThisCycle }
         val overdue = statuses.filter { it.isOverdue }
-        val totalDue = statuses.sumOf { it.bill.amount }
-        val totalPaid = paid.sumOf { it.bill.amount }
+        val totalDue = statuses.sumOf { toDisplay(it.bill.amount, it.bill.currency) }
+        val totalPaid = paid.sumOf { status ->
+            val payment = paymentList.firstOrNull {
+                it.billId == status.bill.id && it.dueDate == status.nextDueDate
+            }
+            if (payment == null) {
+                toDisplay(status.bill.amount, status.bill.currency)
+            } else {
+                toDisplay(payment.amount, payment.currency.ifBlank { status.bill.currency })
+            }
+        }
         val nextDue = statuses.filter { !it.isPaidThisCycle && !it.isOverdue }
             .minByOrNull { it.daysUntilDue }
         val allPaid = statuses.isNotEmpty() && paid.size == statuses.size
@@ -142,7 +162,8 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
             paidCount = paid.size,
             overdueCount = overdue.size,
             nextDueBill = nextDue,
-            allPaid = allPaid
+            allPaid = allPaid,
+            currency = targetCurrency
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MonthlySummary(0.0, 0.0, 0.0, 0, 0, 0))
 
@@ -156,12 +177,37 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
 
     fun loadChartData() {
         viewModelScope.launch {
+            val targetCurrency = _displayCurrency.value
+            val manualRates = CurrencyPrefs.getManualRates(getApplication())
+            val toDisplay: (Double, String) -> Double = { amount, currency ->
+                CurrencyConverter.convert(amount, currency, targetCurrency, manualRates)
+            }
+            val allBills = repo.getAllBillsForExport()
+            val billMap = allBills.associateBy { it.id }
+            val allPayments = repo.getAllPaymentsForExport()
             val cal = Calendar.getInstance()
             val year = cal.get(Calendar.YEAR)
             val month = cal.get(Calendar.MONTH)
+            val monthStart = Calendar.getInstance().apply {
+                set(year, month, 1, 0, 0, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis
+            val monthEnd = Calendar.getInstance().apply {
+                set(year, month, 1, 0, 0, 0)
+                set(Calendar.MILLISECOND, 0)
+                add(Calendar.MONTH, 1)
+            }.timeInMillis
 
-            val categoryBreakdown = repo.getSpendingByCategory(year, month)
-                .map { it.category to it.total }
+            val categoryBreakdown = allPayments
+                .asSequence()
+                .filter { it.paidAt >= monthStart && it.paidAt < monthEnd }
+                .mapNotNull { payment ->
+                    billMap[payment.billId]?.let { bill ->
+                        bill.category to toDisplay(payment.amount, payment.currency.ifBlank { bill.currency })
+                    }
+                }
+                .groupBy({ it.first }, { it.second })
+                .map { (category, amounts) -> category to amounts.sum() }
                 .filter { it.second > 0 }
                 .sortedByDescending { it.second }
 
@@ -170,38 +216,56 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
             var totalLast12 = 0.0
             var monthsCounted = 0
             for (i in 11 downTo 0) {
-                val tCal = Calendar.getInstance().apply { add(Calendar.MONTH, -i) }
+                val tCal = Calendar.getInstance().apply {
+                    set(Calendar.DAY_OF_MONTH, 1)
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                    add(Calendar.MONTH, -i)
+                }
                 val m = tCal.get(Calendar.MONTH)
                 val y = tCal.get(Calendar.YEAR)
-                val total = repo.getMonthlySpendingTotal(y, m)
+                val start = tCal.timeInMillis
+                val end = (tCal.clone() as Calendar).apply { add(Calendar.MONTH, 1) }.timeInMillis
+                val total = allPayments
+                    .asSequence()
+                    .filter { it.paidAt >= start && it.paidAt < end }
+                    .sumOf { payment ->
+                        val bill = billMap[payment.billId]
+                        toDisplay(payment.amount, payment.currency.ifBlank { bill?.currency ?: "USD" })
+                    }
                 if (i < 6) monthlyTrend.add("${monthNames[m]} ${y % 100}" to total)
                 if (total > 0) { totalLast12 += total; monthsCounted++ }
             }
 
-            val lifetimeTotal = repo.getTotalLifetimeSpending()
+            val lifetimeTotal = allPayments.sumOf { payment ->
+                val bill = billMap[payment.billId]
+                toDisplay(payment.amount, payment.currency.ifBlank { bill?.currency ?: "USD" })
+            }
             val yearlyProjection = if (monthsCounted > 0) (totalLast12 / monthsCounted) * 12 else 0.0
 
             // Forecast: compute upcoming bills in 30/60/90 days
-            val allBills = repo.getAllBillsList()
             val now = System.currentTimeMillis()
             val day30 = now + 30L * 24 * 60 * 60 * 1000
             val day60 = now + 60L * 24 * 60 * 60 * 1000
             val day90 = now + 90L * 24 * 60 * 60 * 1000
-            val paidCycles = repo.getAllPaymentsForExport()
+            val paidCycles = allPayments
                 .asSequence()
                 .map { it.billId to it.dueDate }
                 .toSet()
             var total30 = 0.0; var total60 = 0.0; var total90 = 0.0
             var count30 = 0; var count60 = 0; var count90 = 0
-            allBills.forEach { bill ->
+            allBills.filter { it.isEnabled }.forEach { bill ->
                 // Collect all due dates for this bill within 90 days
                 var dueDate = ReminderScheduler.getNextDueDate(bill)
                 val seen = mutableSetOf<Long>()
                 while (dueDate <= day90 && seen.add(dueDate)) {
                     if (dueDate >= now && (bill.id to dueDate) !in paidCycles) {
-                        if (dueDate <= day30) { total30 += bill.amount; count30++ }
-                        if (dueDate <= day60) { total60 += bill.amount; count60++ }
-                        total90 += bill.amount; count90++
+                        val amount = toDisplay(bill.amount, bill.currency)
+                        if (dueDate <= day30) { total30 += amount; count30++ }
+                        if (dueDate <= day60) { total60 += amount; count60++ }
+                        total90 += amount; count90++
                     }
                     val nextDue = ReminderScheduler.getNextDueDateAfter(bill, dueDate)
                     if (nextDue == null || nextDue <= dueDate) break
@@ -210,7 +274,14 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
             }
             val forecast = ForecastData(total30, total60, total90, count30, count60, count90)
 
-            _chartData.value = ChartData(categoryBreakdown, monthlyTrend, lifetimeTotal, yearlyProjection, forecast)
+            _chartData.value = ChartData(
+                categoryBreakdown,
+                monthlyTrend,
+                lifetimeTotal,
+                yearlyProjection,
+                forecast,
+                targetCurrency
+            )
         }
     }
 
@@ -218,11 +289,37 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
     fun setSortMode(mode: SortMode) { _sortMode.value = mode }
     fun setFilterCategory(category: BillCategory?) { _filterCategory.value = category }
 
+    fun setDisplayCurrency(currency: String) {
+        CurrencyPrefs.setDisplayCurrency(getApplication(), currency)
+        _displayCurrency.value = CurrencyPrefs.getDisplayCurrency(getApplication())
+        _currencySettingsRevision.update { it + 1 }
+        loadChartData()
+    }
+
+    fun setManualRate(currency: String, rate: Double?) {
+        CurrencyPrefs.setManualRate(getApplication(), currency, rate)
+        _currencySettingsRevision.update { it + 1 }
+        loadChartData()
+    }
+
+    fun getManualRates(): Map<String, Double> = CurrencyPrefs.getManualRates(getApplication())
+
+    fun convertToDisplay(amount: Double, currency: String): Double =
+        CurrencyConverter.convert(
+            amount,
+            currency,
+            _displayCurrency.value,
+            CurrencyPrefs.getManualRates(getApplication())
+        )
+
     fun getPaymentsForBill(billId: Long): Flow<List<Payment>> = repo.getPaymentsForBill(billId)
 
     fun saveBill(bill: Bill, payees: List<PayeeDraft>? = null) {
         viewModelScope.launch {
-            val normalizedBill = bill.copy(name = MerchantNormalizer.normalize(bill.name))
+            val normalizedBill = bill.copy(
+                name = MerchantNormalizer.normalize(bill.name),
+                currency = CurrencyCatalog.find(bill.currency).code
+            )
             val id = if (normalizedBill.id == 0L) {
                 repo.insertBill(normalizedBill)
             } else {
@@ -305,7 +402,8 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
                         confirmationNumber = confirmationNumber,
                         attachmentName = attachment?.displayName.orEmpty(),
                         attachmentFile = attachment?.fileName.orEmpty(),
-                        attachmentMime = attachment?.mimeType ?: "application/octet-stream"
+                        attachmentMime = attachment?.mimeType ?: "application/octet-stream",
+                        currency = bill.currency
                     )
                 )
             } else if (attachment != null) {
@@ -332,7 +430,19 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
 
     suspend fun getBillById(id: Long): Bill? = repo.getBillById(id)
 
-    suspend fun getLifetimeSpending(billId: Long): Double = repo.getLifetimeSpending(billId)
+    suspend fun getLifetimeSpending(billId: Long): Double {
+        val bill = repo.getBillById(billId) ?: return 0.0
+        val payments = repo.getPaymentsForBillList(billId)
+        val manualRates = CurrencyPrefs.getManualRates(getApplication())
+        return payments.sumOf {
+            CurrencyConverter.convert(
+                it.amount,
+                it.currency.ifBlank { bill.currency },
+                bill.currency,
+                manualRates
+            )
+        }
+    }
 
     suspend fun getOnTimeStreak(billId: Long): Int = repo.getOnTimeStreak(billId)
 

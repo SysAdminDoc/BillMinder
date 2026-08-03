@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sysadmindoc.billminder.data.BillCategory
+import com.sysadmindoc.billminder.data.CurrencyFormatter
 import com.sysadmindoc.billminder.data.Recurrence
 import com.sysadmindoc.billminder.ui.theme.*
 import com.sysadmindoc.billminder.viewmodel.BillViewModel
@@ -62,7 +63,7 @@ fun StatsScreen(viewModel: BillViewModel) {
                 Text("Lifetime Spending", style = MaterialTheme.typography.labelLarge, color = CatSubtext0)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "$${"%,.2f".format(chartData.lifetimeTotal)}",
+                    CurrencyFormatter.format(chartData.lifetimeTotal, chartData.currency),
                     fontSize = 36.sp,
                     fontWeight = FontWeight.Bold,
                     color = CatText
@@ -89,7 +90,7 @@ fun StatsScreen(viewModel: BillViewModel) {
                     Column {
                         Text("Yearly Projection", style = MaterialTheme.typography.labelLarge, color = CatSubtext0)
                         Text(
-                            "$${"%,.2f".format(chartData.yearlyProjection)}",
+                            CurrencyFormatter.format(chartData.yearlyProjection, chartData.currency),
                             fontSize = 24.sp,
                             fontWeight = FontWeight.Bold,
                             color = CatPeach
@@ -98,7 +99,7 @@ fun StatsScreen(viewModel: BillViewModel) {
                     Column(horizontalAlignment = Alignment.End) {
                         Text("Monthly Avg", style = MaterialTheme.typography.labelMedium, color = CatSubtext0)
                         Text(
-                            "$${"%,.2f".format(chartData.yearlyProjection / 12)}",
+                            CurrencyFormatter.format(chartData.yearlyProjection / 12, chartData.currency),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = CatSubtext1
@@ -121,9 +122,9 @@ fun StatsScreen(viewModel: BillViewModel) {
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        ForecastColumn("30 days", chartData.forecast.next30Days, chartData.forecast.next30Bills, CatGreen)
-                        ForecastColumn("60 days", chartData.forecast.next60Days, chartData.forecast.next60Bills, CatYellow)
-                        ForecastColumn("90 days", chartData.forecast.next90Days, chartData.forecast.next90Bills, CatPeach)
+                        ForecastColumn("30 days", chartData.forecast.next30Days, chartData.forecast.next30Bills, CatGreen, chartData.currency)
+                        ForecastColumn("60 days", chartData.forecast.next60Days, chartData.forecast.next60Bills, CatYellow, chartData.currency)
+                        ForecastColumn("90 days", chartData.forecast.next90Days, chartData.forecast.next90Bills, CatPeach, chartData.currency)
                     }
                 }
             }
@@ -163,7 +164,7 @@ fun StatsScreen(viewModel: BillViewModel) {
                                 modifier = Modifier.weight(1f)
                             )
                             Text(
-                                "$${"%,.2f".format(amount)}",
+                                CurrencyFormatter.format(amount, chartData.currency),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = CatSubtext1
@@ -183,7 +184,7 @@ fun StatsScreen(viewModel: BillViewModel) {
                 Column(modifier = Modifier.padding(20.dp)) {
                     Text("Monthly Trend", style = MaterialTheme.typography.titleMedium, color = CatText)
                     Spacer(Modifier.height(16.dp))
-                    TrendChart(chartData.monthlyTrend, modifier = Modifier.fillMaxWidth().height(180.dp))
+                    TrendChart(chartData.monthlyTrend, chartData.currency, modifier = Modifier.fillMaxWidth().height(180.dp))
                 }
             }
         }
@@ -198,6 +199,7 @@ fun StatsScreen(viewModel: BillViewModel) {
 @Composable
 private fun WhatIfPanel(viewModel: BillViewModel) {
     val billsWithStatus by viewModel.billsWithStatus.collectAsState()
+    val displayCurrency by viewModel.displayCurrency.collectAsState()
     val recurringBills = billsWithStatus.filter { !it.isPaidThisCycle && it.bill.recurrence != Recurrence.ONE_TIME }
     var expanded by remember { mutableStateOf(false) }
     val droppedBills = remember { mutableStateListOf<Long>() }
@@ -215,7 +217,7 @@ private fun WhatIfPanel(viewModel: BillViewModel) {
                 Recurrence.YEARLY -> 1
                 Recurrence.ONE_TIME -> 0
             }
-            bws.bill.amount * multiplier
+            viewModel.convertToDisplay(bws.bill.amount, bws.bill.currency) * multiplier
         }
 
     Card(
@@ -242,7 +244,7 @@ private fun WhatIfPanel(viewModel: BillViewModel) {
                         color = CatGreen.copy(alpha = 0.15f)
                     ) {
                         Text(
-                            "Save $${"%,.0f".format(annualSavings)}/yr",
+                            "Save ${CurrencyFormatter.format(annualSavings, displayCurrency)}/yr",
                             color = CatGreen,
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
@@ -264,7 +266,8 @@ private fun WhatIfPanel(viewModel: BillViewModel) {
                     Recurrence.YEARLY -> 1
                     Recurrence.ONE_TIME -> 0
                 }
-                val yearlyAmount = bws.bill.amount * multiplier
+                val displayAmount = viewModel.convertToDisplay(bws.bill.amount, bws.bill.currency)
+                val yearlyAmount = displayAmount * multiplier
 
                 Row(
                     modifier = Modifier
@@ -294,13 +297,13 @@ private fun WhatIfPanel(viewModel: BillViewModel) {
                     )
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
-                            "$${"%,.2f".format(bws.bill.amount)}/${bws.bill.recurrence.label.take(3).lowercase()}",
+                            "${CurrencyFormatter.format(displayAmount, displayCurrency)}/${bws.bill.recurrence.label.take(3).lowercase()}",
                             style = MaterialTheme.typography.labelMedium,
                             color = CatSubtext0
                         )
                         if (isDropped) {
                             Text(
-                                "-$${"%,.0f".format(yearlyAmount)}/yr",
+                                "-${CurrencyFormatter.format(yearlyAmount, displayCurrency)}/yr",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = CatGreen,
                                 fontWeight = FontWeight.Bold
@@ -367,7 +370,7 @@ private fun PieChart(data: List<Pair<BillCategory, Double>>, modifier: Modifier 
 }
 
 @Composable
-private fun TrendChart(data: List<Pair<String, Double>>, modifier: Modifier = Modifier) {
+private fun TrendChart(data: List<Pair<String, Double>>, currency: String, modifier: Modifier = Modifier) {
     val maxVal = data.maxOfOrNull { it.second } ?: 1.0
     val animatedProgress = remember { Animatable(0f) }
     LaunchedEffect(data) {
@@ -398,7 +401,7 @@ private fun TrendChart(data: List<Pair<String, Double>>, modifier: Modifier = Mo
                 end = Offset(size.width - 20f, y),
                 strokeWidth = 1f
             )
-            val label = "$${"%,.0f".format(maxVal * i / 3)}"
+            val label = CurrencyFormatter.format(maxVal * i / 3, currency)
             drawContext.canvas.nativeCanvas.drawText(label, 4f, y + 10f, textPaint)
         }
 
@@ -448,7 +451,7 @@ private fun TrendChart(data: List<Pair<String, Double>>, modifier: Modifier = Mo
 }
 
 @Composable
-private fun ForecastColumn(label: String, amount: Double, count: Int, color: Color) {
+private fun ForecastColumn(label: String, amount: Double, count: Int, color: Color, currency: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             label,
@@ -457,7 +460,7 @@ private fun ForecastColumn(label: String, amount: Double, count: Int, color: Col
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            "$${"%,.0f".format(amount)}",
+            CurrencyFormatter.format(amount, currency),
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
             color = color

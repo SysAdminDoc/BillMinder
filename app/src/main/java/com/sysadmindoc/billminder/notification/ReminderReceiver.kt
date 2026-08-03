@@ -49,7 +49,8 @@ class ReminderReceiver : BroadcastReceiver() {
                     amount = bill.amount,
                     daysUntilDue = daysBeforeDue,
                     isAutoPay = bill.isAutoPay,
-                    nextDueDate = nextDue
+                    nextDueDate = nextDue,
+                    currency = bill.currency
                 )
             }
 
@@ -66,7 +67,7 @@ class ReminderReceiver : BroadcastReceiver() {
             val bill = repo.getBillById(billId) ?: return@launch
             val nextDue = ReminderScheduler.getNextDueDate(bill)
             repo.insertPayment(
-                Payment(billId = billId, amount = amount, dueDate = nextDue)
+                Payment(billId = billId, amount = amount, dueDate = nextDue, currency = bill.currency)
             )
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
             nm.cancel(billId.toInt())
@@ -81,6 +82,7 @@ class ReminderReceiver : BroadcastReceiver() {
         val amount = intent.getDoubleExtra("amount", 0.0)
         val daysUntilDue = intent.getIntExtra("days_until_due", 0)
         val isAutoPay = intent.getBooleanExtra("is_auto_pay", false)
+        val currency = intent.getStringExtra("currency") ?: "USD"
         val snoozeMinutes = intent.getIntExtra("snooze_minutes", 60)
 
         // Dismiss current notification
@@ -94,6 +96,7 @@ class ReminderReceiver : BroadcastReceiver() {
             putExtra("bill_id", billId)
             putExtra("bill_name", billName)
             putExtra("amount", amount)
+            putExtra("currency", currency)
             putExtra("days_until_due", daysUntilDue)
             putExtra("is_auto_pay", isAutoPay)
         }
@@ -112,6 +115,7 @@ class ReminderReceiver : BroadcastReceiver() {
         val amount = intent.getDoubleExtra("amount", 0.0)
         val daysUntilDue = intent.getIntExtra("days_until_due", 0)
         val isAutoPay = intent.getBooleanExtra("is_auto_pay", false)
+        val currency = intent.getStringExtra("currency") ?: "USD"
 
         NotificationHelper.showReminderNotification(
             context = context,
@@ -119,7 +123,8 @@ class ReminderReceiver : BroadcastReceiver() {
             billName = billName,
             amount = amount,
             daysUntilDue = daysUntilDue,
-            isAutoPay = isAutoPay
+            isAutoPay = isAutoPay,
+            currency = currency
         )
     }
 
@@ -139,7 +144,8 @@ class ReminderReceiver : BroadcastReceiver() {
                     amount = bill.amount,
                     daysUntilDue = ((nextDue - System.currentTimeMillis()) / (24 * 60 * 60 * 1000L)).toInt(),
                     isAutoPay = bill.isAutoPay,
-                    nextDueDate = nextDue
+                    nextDueDate = nextDue,
+                    currency = bill.currency
                 )
             }
         }
@@ -152,7 +158,8 @@ class ReminderReceiver : BroadcastReceiver() {
         amount: Double,
         daysUntilDue: Int,
         isAutoPay: Boolean,
-        nextDueDate: Long
+        nextDueDate: Long,
+        currency: String
     ) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val now = System.currentTimeMillis()
@@ -163,6 +170,7 @@ class ReminderReceiver : BroadcastReceiver() {
             putExtra("bill_id", billId)
             putExtra("bill_name", billName)
             putExtra("amount", amount)
+            putExtra("currency", currency)
             putExtra("days_until_due", daysUntilDue)
             putExtra("is_auto_pay", isAutoPay)
             putExtra("next_due_date", nextDueDate)
@@ -184,6 +192,7 @@ class ReminderReceiver : BroadcastReceiver() {
             putExtra("bill_id", billId)
             putExtra("bill_name", billName)
             putExtra("amount", amount)
+            putExtra("currency", currency)
             putExtra("days_until_due", daysUntilDue)
             putExtra("is_auto_pay", isAutoPay)
             putExtra("next_due_date", nextDueDate)
@@ -221,7 +230,12 @@ class ReminderReceiver : BroadcastReceiver() {
             if (daysUntilDue < 0) {
                 // Already overdue
                 NotificationHelper.showOverdueNotification(
-                    context, billId, bill.name, bill.amount, -daysUntilDue
+                    context = context,
+                    billId = billId,
+                    billName = bill.name,
+                    amount = bill.amount,
+                    daysPastDue = -daysUntilDue,
+                    currency = bill.currency
                 )
             } else {
                 val escalationNote = when (cascadeLevel) {
@@ -235,7 +249,8 @@ class ReminderReceiver : BroadcastReceiver() {
                     amount = bill.amount,
                     daysUntilDue = daysUntilDue,
                     isAutoPay = bill.isAutoPay,
-                    nextDueDate = nextDueDate
+                    nextDueDate = nextDueDate,
+                    currency = bill.currency
                 )
             }
         }

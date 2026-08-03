@@ -18,6 +18,9 @@ import androidx.glance.unit.ColorProvider
 import com.sysadmindoc.billminder.MainActivity
 import com.sysadmindoc.billminder.data.BillDatabase
 import com.sysadmindoc.billminder.data.BillRepository
+import com.sysadmindoc.billminder.data.CurrencyConverter
+import com.sysadmindoc.billminder.data.CurrencyFormatter
+import com.sysadmindoc.billminder.data.CurrencyPrefs
 import com.sysadmindoc.billminder.notification.ReminderScheduler
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -30,6 +33,8 @@ class MonthTotalWidget : GlanceAppWidget() {
         val db = BillDatabase.getDatabase(context)
         val repo = BillRepository(db.billDao())
         val bills = repo.getAllBillsList()
+        val displayCurrency = CurrencyPrefs.getDisplayCurrency(context)
+        val manualRates = CurrencyPrefs.getManualRates(context)
         val monthStart = Calendar.getInstance().apply {
             set(Calendar.DAY_OF_MONTH, 1)
             set(Calendar.HOUR_OF_DAY, 0)
@@ -57,10 +62,15 @@ class MonthTotalWidget : GlanceAppWidget() {
             while (nextDue < monthEnd && seen.add(nextDue)) {
                 if (nextDue >= monthStart) {
                     val payment = repo.getPaymentForBillDue(bill.id, nextDue)
-                    totalDue += bill.amount
+                    totalDue += CurrencyConverter.convert(bill.amount, bill.currency, displayCurrency, manualRates)
                     totalCount++
                     if (payment != null) {
-                        totalPaid += payment.amount
+                        totalPaid += CurrencyConverter.convert(
+                            payment.amount,
+                            payment.currency.ifBlank { bill.currency },
+                            displayCurrency,
+                            manualRates
+                        )
                         paidCount++
                     }
                 }
@@ -75,7 +85,7 @@ class MonthTotalWidget : GlanceAppWidget() {
         val monthName = SimpleDateFormat("MMMM", Locale.getDefault()).format(Date())
 
         provideContent {
-            MonthTotalContent(monthName, totalDue, totalPaid, remaining, paidCount, totalCount)
+            MonthTotalContent(monthName, totalDue, totalPaid, remaining, paidCount, totalCount, displayCurrency)
         }
     }
 }
@@ -87,7 +97,8 @@ private fun MonthTotalContent(
     totalPaid: Double,
     remaining: Double,
     paidCount: Int,
-    totalCount: Int
+    totalCount: Int,
+    displayCurrency: String
 ) {
     val bgColor = ColorProvider(Color(0xFF11111B))
     val textColor = ColorProvider(Color(0xFFCDD6F4))
@@ -119,7 +130,7 @@ private fun MonthTotalContent(
             )
         } else {
             Text(
-                formatAmount(remaining),
+                CurrencyFormatter.format(remaining, displayCurrency),
                 style = TextStyle(color = textColor, fontSize = 28.sp, fontWeight = FontWeight.Bold)
             )
             Text(
@@ -145,19 +156,16 @@ private fun MonthTotalContent(
             horizontalAlignment = Alignment.Horizontal.CenterHorizontally
         ) {
             Text(
-                formatAmount(totalPaid),
+                CurrencyFormatter.format(totalPaid, displayCurrency),
                 style = TextStyle(color = greenColor, fontSize = 12.sp)
             )
             Text(
-                " of ${formatAmount(totalDue)}",
+                " of ${CurrencyFormatter.format(totalDue, displayCurrency)}",
                 style = TextStyle(color = subtextColor, fontSize = 12.sp)
             )
         }
     }
 }
-
-private fun formatAmount(amount: Double): String =
-    String.format(Locale.getDefault(), "$%.0f", amount)
 
 class MonthTotalWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = MonthTotalWidget()

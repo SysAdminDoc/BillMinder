@@ -10,6 +10,7 @@ All notable changes to BillMinder will be documented in this file.
 - Added split bills with Room-backed payees, percentage validation, share calculations, and undo/duplicate preservation.
 - Added encrypted image/PDF receipt attachments to payment records, with private-file viewing and cleanup on undo.
 - Added a 400+ entry merchant alias normalizer for bill entry and JSON restore, including common statement descriptors.
+- Added native bill/payment currencies, offline dashboard FX conversion, manual rate overrides, and currency-aware widgets, notifications, and exports.
 
 ## [v2.1.1] - 2026-04-29
 

@@ -21,6 +21,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.sysadmindoc.billminder.data.CurrencyCatalog
+import com.sysadmindoc.billminder.data.CurrencyConverter
 import com.sysadmindoc.billminder.security.SecurityPrefs
 import com.sysadmindoc.billminder.ui.theme.*
 import com.sysadmindoc.billminder.viewmodel.BillViewModel
@@ -33,6 +35,9 @@ fun SettingsScreen(
     onPinConfigured: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val displayCurrency by viewModel.displayCurrency.collectAsState()
+    var showCurrencyMenu by remember { mutableStateOf(false) }
+    var showFxRates by remember { mutableStateOf(false) }
 
     val exportJsonLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
@@ -196,6 +201,55 @@ fun SettingsScreen(
                     }
                     saved
                 }
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Text("Currency", style = MaterialTheme.typography.labelLarge, color = CatSubtext0)
+
+        Box {
+            SettingsRow(
+                icon = Icons.Filled.AttachMoney,
+                title = "Display Currency",
+                subtitle = "Dashboard totals: ${displayCurrency} - ${CurrencyCatalog.find(displayCurrency).name}"
+            ) {
+                showCurrencyMenu = true
+            }
+            DropdownMenu(
+                expanded = showCurrencyMenu,
+                onDismissRequest = { showCurrencyMenu = false },
+                containerColor = CatSurface0
+            ) {
+                CurrencyCatalog.supported.forEach { info ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                "${info.code} - ${info.name}",
+                                color = if (info.code == displayCurrency) CatBlue else CatText
+                            )
+                        },
+                        onClick = {
+                            viewModel.setDisplayCurrency(info.code)
+                            showCurrencyMenu = false
+                        }
+                    )
+                }
+            }
+        }
+
+        SettingsRow(
+            icon = Icons.Filled.Tune,
+            title = "Offline FX Rates",
+            subtitle = "Bundled snapshot; set manual overrides when needed"
+        ) {
+            showFxRates = true
+        }
+
+        if (showFxRates) {
+            FxRatesDialog(
+                manualRates = viewModel.getManualRates(),
+                onSaveRate = viewModel::setManualRate,
+                onDismiss = { showFxRates = false }
             )
         }
 
@@ -427,6 +481,81 @@ private fun PinSetupDialog(
                 }
             ) {
                 Text(if (step == 1) "Next" else "Set PIN", color = CatBlue)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = CatSubtext0)
+            }
+        }
+    )
+}
+
+@Composable
+private fun FxRatesDialog(
+    manualRates: Map<String, Double>,
+    onSaveRate: (String, Double?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val drafts = remember(manualRates) {
+        mutableStateMapOf<String, String>().apply {
+            manualRates.forEach { (code, rate) -> put(code, rate.toString()) }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CatSurface0,
+        title = { Text("Offline FX Rates", color = CatText) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    "Rates are units of currency per 1 USD. Leave a field blank to use the bundled snapshot.",
+                    color = CatSubtext0,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                CurrencyCatalog.supported.filter { it.code != "USD" }.forEach { info ->
+                    OutlinedTextField(
+                        value = drafts[info.code] ?: "",
+                        onValueChange = { value ->
+                            if (value.matches(Regex("^\\d*(\\.\\d{0,6})?$"))) drafts[info.code] = value
+                        },
+                        label = { Text("1 USD = ${info.code}") },
+                        supportingText = {
+                            Text("Bundled: ${CurrencyConverter.bundledUsdRates[info.code]}", color = CatOverlay0)
+                        },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = CatText,
+                            unfocusedTextColor = CatText,
+                            focusedBorderColor = CatBlue,
+                            unfocusedBorderColor = CatSurface1,
+                            focusedLabelColor = CatBlue,
+                            unfocusedLabelColor = CatSubtext0,
+                            cursorColor = CatBlue
+                        )
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    CurrencyCatalog.supported.filter { it.code != "USD" }.forEach { info ->
+                        onSaveRate(info.code, drafts[info.code]?.toDoubleOrNull())
+                    }
+                    onDismiss()
+                }
+            ) {
+                Text("Save", color = CatBlue)
             }
         },
         dismissButton = {

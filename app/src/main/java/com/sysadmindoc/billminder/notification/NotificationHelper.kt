@@ -8,6 +8,7 @@ import android.content.Intent
 import androidx.core.app.NotificationCompat
 import com.sysadmindoc.billminder.MainActivity
 import com.sysadmindoc.billminder.R
+import com.sysadmindoc.billminder.data.CurrencyFormatter
 
 object NotificationHelper {
 
@@ -47,7 +48,8 @@ object NotificationHelper {
         amount: Double,
         daysUntilDue: Int,
         isAutoPay: Boolean,
-        nextDueDate: Long = 0L
+        nextDueDate: Long = 0L,
+        currency: String = "USD"
     ) {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -65,6 +67,7 @@ object NotificationHelper {
             action = "MARK_PAID"
             putExtra("bill_id", billId)
             putExtra("amount", amount)
+            putExtra("currency", currency)
         }
         val markPaidPending = PendingIntent.getBroadcast(
             context, (billId + 10000).toInt(), markPaidIntent,
@@ -77,6 +80,7 @@ object NotificationHelper {
             putExtra("bill_id", billId)
             putExtra("bill_name", billName)
             putExtra("amount", amount)
+            putExtra("currency", currency)
             putExtra("days_until_due", daysUntilDue)
             putExtra("is_auto_pay", isAutoPay)
             putExtra("snooze_minutes", 60)
@@ -92,6 +96,7 @@ object NotificationHelper {
             putExtra("bill_id", billId)
             putExtra("bill_name", billName)
             putExtra("amount", amount)
+            putExtra("currency", currency)
             putExtra("days_until_due", daysUntilDue)
             putExtra("is_auto_pay", isAutoPay)
             putExtra("snooze_minutes", 60 * 24)
@@ -121,10 +126,10 @@ object NotificationHelper {
 
         val notification = NotificationCompat.Builder(context, CHANNEL_REMINDERS)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("$billName - $${"%.2f".format(amount)}$autoPayNote")
+            .setContentTitle("$billName - ${CurrencyFormatter.format(amount, currency)}$autoPayNote")
             .setContentText("Bill is $dueText")
             .setStyle(NotificationCompat.BigTextStyle()
-                .bigText("$billName is $dueText.\nAmount: $${"%.2f".format(amount)}$autoPayNote"))
+                .bigText("$billName is $dueText.\nAmount: ${CurrencyFormatter.format(amount, currency)}$autoPayNote"))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setContentIntent(pendingIntent)
@@ -143,7 +148,8 @@ object NotificationHelper {
         billId: Long,
         billName: String,
         amount: Double,
-        daysPastDue: Int
+        daysPastDue: Int,
+        currency: String = "USD"
     ) {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -169,7 +175,7 @@ object NotificationHelper {
         val notification = NotificationCompat.Builder(context, CHANNEL_OVERDUE)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("OVERDUE: $billName")
-            .setContentText("$${"%.2f".format(amount)} is $daysPastDue day(s) past due!")
+            .setContentText("${CurrencyFormatter.format(amount, currency)} is $daysPastDue day(s) past due!")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setContentIntent(pendingIntent)

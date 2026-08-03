@@ -16,6 +16,9 @@ class BillRepository(private val dao: BillDao) {
     fun getPaymentsForBill(billId: Long): Flow<List<Payment>> =
         dao.getPaymentsForBill(billId)
 
+    suspend fun getPaymentsForBillList(billId: Long): List<Payment> =
+        dao.getPaymentsForBillList(billId)
+
     fun getPaymentsForMonth(year: Int, month: Int): Flow<List<Payment>> {
         val (start, end) = getMonthRange(year, month)
         return dao.getPaymentsForMonth(start, end)

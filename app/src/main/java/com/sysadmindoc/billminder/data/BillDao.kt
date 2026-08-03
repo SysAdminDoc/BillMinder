@@ -37,6 +37,9 @@ interface BillDao {
     @Query("SELECT * FROM payments WHERE billId = :billId ORDER BY paidAt DESC")
     fun getPaymentsForBill(billId: Long): Flow<List<Payment>>
 
+    @Query("SELECT * FROM payments WHERE billId = :billId ORDER BY paidAt DESC")
+    suspend fun getPaymentsForBillList(billId: Long): List<Payment>
+
     @Query("SELECT * FROM payments ORDER BY paidAt DESC")
     fun getAllPayments(): Flow<List<Payment>>
 

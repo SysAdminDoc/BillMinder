@@ -19,6 +19,7 @@ A bill tracking and reminder app for Android. Never miss a payment again.
 - **Variable Amounts** - Track expected, minimum, and maximum amounts for utilities
 - **Split Bills** - Assign one bill across multiple payees with percentage share math
 - **Merchant Normalization** - Recognizes 400+ common statement aliases while preserving unknown names
+- **Multi-Currency** - Store each bill in its native currency, convert dashboard totals offline, and override FX rates manually
 - **Encrypted Receipt Attachments** - Attach an image or PDF when marking a payment paid; receipts stay encrypted in app-private storage
 
 ### Reminders (Alarm-Style)
@@ -54,6 +55,7 @@ A bill tracking and reminder app for Android. Never miss a payment again.
 - **JSON Backup/Restore** - Full export and import of all data
 - **CSV Export** - Payment history as spreadsheet
 - **Year-End Export** - Tax-ready CSV grouped by category
+- **Currency-Aware Exports** - JSON and CSV preserve bill/payment currency codes
 - **Room Database** - SQLite with migration support
 
 ### Security

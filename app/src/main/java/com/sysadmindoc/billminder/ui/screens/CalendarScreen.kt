@@ -20,6 +20,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sysadmindoc.billminder.data.Bill
+import com.sysadmindoc.billminder.data.CurrencyFormatter
 import com.sysadmindoc.billminder.ui.theme.*
 import com.sysadmindoc.billminder.viewmodel.BillViewModel
 import com.sysadmindoc.billminder.viewmodel.BillWithStatus
@@ -247,7 +248,7 @@ fun CalendarScreen(
                                 modifier = Modifier.weight(1f)
                             )
                             Text(
-                                "$${"%,.2f".format(bws.bill.amount)}",
+                                CurrencyFormatter.format(bws.bill.amount, bws.bill.currency),
                                 color = if (bws.isPaidThisCycle) CatGreen else CatText,
                                 fontWeight = FontWeight.Bold
                             )

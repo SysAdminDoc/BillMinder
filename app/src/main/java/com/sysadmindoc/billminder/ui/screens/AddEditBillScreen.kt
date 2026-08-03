@@ -35,6 +35,7 @@ fun AddEditBillScreen(
     val scope = rememberCoroutineScope()
     var name by remember { mutableStateOf("") }
     var amount by remember { mutableStateOf("") }
+    var currency by remember { mutableStateOf("USD") }
     var dueDay by remember { mutableStateOf("1") }
     var dueMonth by remember { mutableStateOf<Int?>(null) }
     var dueYear by remember { mutableStateOf<Int?>(null) }
@@ -64,6 +65,7 @@ fun AddEditBillScreen(
             val bill = viewModel.getBillById(billId) ?: return@LaunchedEffect
             name = bill.name
             amount = bill.amount.toBigDecimal().stripTrailingZeros().toPlainString()
+            currency = CurrencyCatalog.find(bill.currency).code
             dueDay = bill.dueDay.toString()
             dueMonth = bill.dueMonth
             dueYear = bill.dueYear
@@ -91,6 +93,7 @@ fun AddEditBillScreen(
     var showRecurrenceMenu by remember { mutableStateOf(false) }
     var showReminderMenu by remember { mutableStateOf(false) }
     var showSecondReminderMenu by remember { mutableStateOf(false) }
+    var showCurrencyMenu by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = CatCrust,
@@ -181,13 +184,47 @@ fun AddEditBillScreen(
             OutlinedTextField(
                 value = amount,
                 onValueChange = { v -> if (v.matches(Regex("^\\d*\\.?\\d{0,2}$"))) amount = v },
-                label = { Text(if (isVariableAmount) "Expected Amount ($)" else "Amount ($)") },
+                label = { Text(if (isVariableAmount) "Expected Amount ($currency)" else "Amount ($currency)") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.fillMaxWidth(),
-                leadingIcon = { Text("$", color = CatSubtext0) },
+                leadingIcon = { Text(CurrencyCatalog.find(currency).symbol.trim(), color = CatSubtext0) },
                 colors = billFieldColors()
             )
+
+            Box {
+                OutlinedTextField(
+                    value = "${currency} - ${CurrencyCatalog.find(currency).name}",
+                    onValueChange = {},
+                    label = { Text("Bill Currency") },
+                    readOnly = true,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().clickable { showCurrencyMenu = true },
+                    trailingIcon = { Icon(Icons.Filled.ArrowDropDown, null, tint = CatSubtext0) },
+                    colors = billFieldColors(),
+                    enabled = false
+                )
+                DropdownMenu(
+                    expanded = showCurrencyMenu,
+                    onDismissRequest = { showCurrencyMenu = false },
+                    containerColor = CatSurface0
+                ) {
+                    CurrencyCatalog.supported.forEach { info ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    "${info.code} - ${info.name}",
+                                    color = if (info.code == currency) CatBlue else CatText
+                                )
+                            },
+                            onClick = {
+                                currency = info.code
+                                showCurrencyMenu = false
+                            }
+                        )
+                    }
+                }
+            }
 
             // Variable amount toggle + range
             Row(
@@ -217,21 +254,21 @@ fun AddEditBillScreen(
                     OutlinedTextField(
                         value = amountMin,
                         onValueChange = { v -> if (v.matches(Regex("^\\d*\\.?\\d{0,2}$"))) amountMin = v },
-                        label = { Text("Min ($)") },
+                        label = { Text("Min ($currency)") },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.weight(1f),
-                        leadingIcon = { Text("$", color = CatSubtext0) },
+                        leadingIcon = { Text(CurrencyCatalog.find(currency).symbol.trim(), color = CatSubtext0) },
                         colors = billFieldColors()
                     )
                     OutlinedTextField(
                         value = amountMax,
                         onValueChange = { v -> if (v.matches(Regex("^\\d*\\.?\\d{0,2}$"))) amountMax = v },
-                        label = { Text("Max ($)") },
+                        label = { Text("Max ($currency)") },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.weight(1f),
-                        leadingIcon = { Text("$", color = CatSubtext0) },
+                        leadingIcon = { Text(CurrencyCatalog.find(currency).symbol.trim(), color = CatSubtext0) },
                         colors = billFieldColors()
                     )
                 }
@@ -313,7 +350,7 @@ fun AddEditBillScreen(
                         }
                         if (amount.toDoubleOrNull() != null) {
                             Text(
-                                "${payee.name.ifBlank { "Payee ${index + 1}" }}: $${"%,.2f".format(PayeeMath.shareAmount(amount.toDouble(), payee.sharePercent))}",
+                                "${payee.name.ifBlank { "Payee ${index + 1}" }}: ${CurrencyFormatter.format(PayeeMath.shareAmount(amount.toDouble(), payee.sharePercent), currency)}",
                                 color = CatSubtext0,
                                 style = MaterialTheme.typography.labelSmall,
                                 modifier = Modifier.padding(start = 4.dp)
@@ -618,7 +655,8 @@ fun AddEditBillScreen(
                         color = selectedColor,
                         isVariableAmount = isVariableAmount,
                         amountMin = parsedMin,
-                        amountMax = parsedMax
+                        amountMax = parsedMax,
+                        currency = currency
                     )
                     viewModel.saveBill(bill, if (isSplitBill) payees.toList() else emptyList())
                     onNavigateBack()

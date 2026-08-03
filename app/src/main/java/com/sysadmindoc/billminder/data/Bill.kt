@@ -74,7 +74,8 @@ data class Bill(
     val tags: String = "",
     val isVariableAmount: Boolean = false,
     val amountMin: Double? = null,
-    val amountMax: Double? = null
+    val amountMax: Double? = null,
+    val currency: String = "USD"
 )
 
 @Entity(tableName = "payments")
@@ -89,5 +90,6 @@ data class Payment(
     val confirmationNumber: String = "",
     val attachmentName: String = "",
     val attachmentFile: String = "",
-    val attachmentMime: String = "application/octet-stream"
+    val attachmentMime: String = "application/octet-stream",
+    val currency: String = "USD"
 )

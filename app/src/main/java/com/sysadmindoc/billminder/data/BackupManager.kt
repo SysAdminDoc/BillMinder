@@ -8,7 +8,7 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 
 data class BackupData(
-    val version: Int = 4,
+    val version: Int = 5,
     val exportedAt: Long = System.currentTimeMillis(),
     val bills: List<Bill>,
     val payments: List<Payment>
@@ -37,14 +37,24 @@ object BackupManager {
         val billIdMap = mutableMapOf<Long, Long>()
         var count = 0
         backup.bills.forEach { bill ->
-            val normalized = bill.copy(id = 0, name = MerchantNormalizer.normalize(bill.name))
+            val normalized = bill.copy(
+                id = 0,
+                name = MerchantNormalizer.normalize(bill.name),
+                currency = CurrencyCatalog.find(bill.currency).code
+            )
             val newId = repo.insertBill(normalized)
             billIdMap[bill.id] = newId
             count++
         }
         backup.payments.forEach { payment ->
             val newBillId = billIdMap[payment.billId] ?: return@forEach
-            repo.insertPayment(payment.copy(id = 0, billId = newBillId))
+            repo.insertPayment(
+                payment.copy(
+                    id = 0,
+                    billId = newBillId,
+                    currency = CurrencyCatalog.find(payment.currency).code
+                )
+            )
         }
         return count
     }
@@ -63,30 +73,34 @@ object BackupManager {
 
         // Group by category
         val byCategory = yearPayments.groupBy { p ->
-            billMap[p.billId]?.category?.label ?: "Unknown"
-        }.toSortedMap()
+            (billMap[p.billId]?.category?.label ?: "Unknown") to p.currency.ifBlank {
+                billMap[p.billId]?.currency ?: "USD"
+            }
+        }.toList().sortedWith(compareBy({ it.first.first }, { it.first.second }))
 
         val sb = StringBuilder()
         sb.appendLine("BillMinder Year-End Report - $year")
         sb.appendLine()
-        sb.appendLine("Category,Bill Name,Payment Date,Amount,Confirmation #")
+        sb.appendLine("Category,Bill Name,Payment Date,Currency,Amount,Confirmation #")
 
-        var grandTotal = 0.0
-        byCategory.forEach { (category, categoryPayments) ->
+        byCategory.forEach { (key, categoryPayments) ->
+            val category = key.first
+            val currency = key.second
             val categoryTotal = categoryPayments.sumOf { it.amount }
-            grandTotal += categoryTotal
             sb.appendLine()
-            sb.appendLine("${csvCell("$category Total")},,,${formatMoney(categoryTotal)},")
+            sb.appendLine("${csvCell("$category Total")},,,${csvCell(currency)},${formatMoney(categoryTotal)},")
             val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
             categoryPayments.sortedBy { it.paidAt }.forEach { p ->
                 val bill = billMap[p.billId]
                 val name = bill?.name ?: "Unknown"
                 val date = dateFormat.format(java.util.Date(p.paidAt))
-                sb.appendLine("${csvCell(category)},${csvCell(name)},$date,${formatMoney(p.amount)},${csvCell(p.confirmationNumber)}")
+                sb.appendLine("${csvCell(category)},${csvCell(name)},$date,${csvCell(currency)},${formatMoney(p.amount)},${csvCell(p.confirmationNumber)}")
             }
         }
-        sb.appendLine()
-        sb.appendLine("Grand Total,,,${formatMoney(grandTotal)},")
+        yearPayments.groupBy { it.currency.ifBlank { "USD" } }.toSortedMap().forEach { (currency, currencyPayments) ->
+            sb.appendLine()
+            sb.appendLine("${csvCell("Grand Total")},,,${csvCell(currency)},${formatMoney(currencyPayments.sumOf { it.amount })},")
+        }
 
         context.contentResolver.openOutputStream(uri)?.use { out ->
             out.write(sb.toString().toByteArray(Charsets.UTF_8))
@@ -99,7 +113,7 @@ object BackupManager {
         val billMap = bills.associateBy { it.id }
 
         val sb = StringBuilder()
-        sb.appendLine("Bill Name,Category,Amount,Due Day,Recurrence,Auto-Pay,Payment Date,Payment Amount,Confirmation #")
+        sb.appendLine("Bill Name,Category,Bill Currency,Amount,Due Day,Recurrence,Auto-Pay,Payment Date,Payment Currency,Payment Amount,Confirmation #")
         payments.forEach { p ->
             val bill = billMap[p.billId]
             val name = bill?.name ?: "Unknown"
@@ -110,7 +124,7 @@ object BackupManager {
             val auto = if (bill?.isAutoPay == true) "Yes" else "No"
             val date = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
                 .format(java.util.Date(p.paidAt))
-            sb.appendLine("${csvCell(name)},${csvCell(cat)},${formatMoney(billAmt)},$dueDay,${csvCell(rec)},$auto,$date,${formatMoney(p.amount)},${csvCell(p.confirmationNumber)}")
+            sb.appendLine("${csvCell(name)},${csvCell(cat)},${csvCell(bill?.currency ?: "USD")},${formatMoney(billAmt)},$dueDay,${csvCell(rec)},$auto,$date,${csvCell(p.currency.ifBlank { bill?.currency ?: "USD" })},${formatMoney(p.amount)},${csvCell(p.confirmationNumber)}")
         }
 
         context.contentResolver.openOutputStream(uri)?.use { out ->

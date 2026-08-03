@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.sysadmindoc.billminder.data.Bill
 import com.sysadmindoc.billminder.data.BillPayee
+import com.sysadmindoc.billminder.data.CurrencyFormatter
 import com.sysadmindoc.billminder.data.HolidayCalendar
 import com.sysadmindoc.billminder.data.PayeeMath
 import com.sysadmindoc.billminder.data.Payment
@@ -117,7 +118,7 @@ fun BillDetailScreen(
                                 onClick = {
                                     val nextDue = ReminderScheduler.getNextDueDate(currentBill)
                                     val shareText = "${currentBill.name}\n" +
-                                        "Amount: $${"%,.2f".format(currentBill.amount)}\n" +
+                                        "Amount: ${CurrencyFormatter.format(currentBill.amount, currentBill.currency)}\n" +
                                         "Due: ${dateFormat.format(Date(nextDue))}\n" +
                                         "Recurrence: ${currentBill.recurrence.label}\n" +
                                         if (currentBill.isAutoPay) "Auto-Pay: Yes" else ""
@@ -176,7 +177,7 @@ fun BillDetailScreen(
                             Spacer(Modifier.width(16.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    "$${"%,.2f".format(currentBill.amount)}",
+                                    CurrencyFormatter.format(currentBill.amount, currentBill.currency),
                                     fontSize = 32.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = CatText
@@ -243,7 +244,10 @@ fun BillDetailScreen(
                             DetailRow("2nd Reminder", it.label)
                         }
                         if (currentBill.isVariableAmount && currentBill.amountMin != null && currentBill.amountMax != null) {
-                            DetailRow("Amount Range", "$${"%,.2f".format(currentBill.amountMin)} - $${"%,.2f".format(currentBill.amountMax)}")
+                            DetailRow(
+                                "Amount Range",
+                                "${CurrencyFormatter.format(currentBill.amountMin, currentBill.currency)} - ${CurrencyFormatter.format(currentBill.amountMax, currentBill.currency)}"
+                            )
                         }
                         if (payees.isNotEmpty()) {
                             Spacer(Modifier.height(12.dp))
@@ -256,7 +260,7 @@ fun BillDetailScreen(
                                 ) {
                                     Text(payee.name, color = CatText, style = MaterialTheme.typography.bodyMedium)
                                     Text(
-                                        "${"%.1f".format(payee.sharePercent)}%  $${"%,.2f".format(PayeeMath.shareAmount(currentBill.amount, payee.sharePercent))}",
+                                        "${"%.1f".format(payee.sharePercent)}%  ${CurrencyFormatter.format(PayeeMath.shareAmount(currentBill.amount, payee.sharePercent), currentBill.currency)}",
                                         color = CatSubtext0,
                                         style = MaterialTheme.typography.bodyMedium
                                     )
@@ -315,7 +319,7 @@ fun BillDetailScreen(
                         Column {
                             Text("Lifetime Spending", style = MaterialTheme.typography.labelLarge, color = CatSubtext0)
                             Text(
-                                "$${"%,.2f".format(lifetimeSpending)}",
+                                CurrencyFormatter.format(lifetimeSpending, currentBill.currency),
                                 fontSize = 24.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = CatMauve
@@ -325,7 +329,7 @@ fun BillDetailScreen(
                             Text("${payments.size} payments", style = MaterialTheme.typography.bodyMedium, color = CatSubtext0)
                             if (payments.isNotEmpty()) {
                                 val avgPayment = lifetimeSpending / payments.size
-                                Text("Avg: $${"%,.2f".format(avgPayment)}", style = MaterialTheme.typography.labelMedium, color = CatOverlay0)
+                                Text("Avg: ${CurrencyFormatter.format(avgPayment, currentBill.currency)}", style = MaterialTheme.typography.labelMedium, color = CatOverlay0)
                             }
                         }
                     }
@@ -418,7 +422,7 @@ private fun PaymentRow(
                 }
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text("$${"%,.2f".format(payment.amount)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = CatGreen)
+                Text(CurrencyFormatter.format(payment.amount, payment.currency), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = CatGreen)
                 if (payment.attachmentName.isNotBlank()) {
                     TextButton(onClick = onOpenAttachment, contentPadding = PaddingValues(0.dp)) {
                         Text("Open", color = CatBlue, style = MaterialTheme.typography.labelMedium)

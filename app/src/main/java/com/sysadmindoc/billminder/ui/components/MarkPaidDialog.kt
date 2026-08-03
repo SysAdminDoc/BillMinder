@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.sysadmindoc.billminder.data.Bill
+import com.sysadmindoc.billminder.data.CurrencyCatalog
 import com.sysadmindoc.billminder.security.EncryptedAttachment
 import com.sysadmindoc.billminder.security.EncryptedAttachmentStore
 import com.sysadmindoc.billminder.ui.theme.*
@@ -66,9 +67,9 @@ fun MarkPaidDialog(
                 OutlinedTextField(
                     value = amount,
                     onValueChange = { v -> if (v.matches(Regex("^\\d*\\.?\\d{0,2}$"))) amount = v },
-                    label = { Text("Amount Paid") },
+                    label = { Text("Amount Paid (${bill.currency})") },
                     singleLine = true,
-                    leadingIcon = { Text("$", color = CatSubtext0) },
+                    leadingIcon = { Text(CurrencyCatalog.find(bill.currency).symbol.trim(), color = CatSubtext0) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(

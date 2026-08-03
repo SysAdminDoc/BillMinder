@@ -18,6 +18,9 @@ import androidx.glance.unit.ColorProvider
 import com.sysadmindoc.billminder.MainActivity
 import com.sysadmindoc.billminder.data.BillDatabase
 import com.sysadmindoc.billminder.data.BillRepository
+import com.sysadmindoc.billminder.data.CurrencyConverter
+import com.sysadmindoc.billminder.data.CurrencyFormatter
+import com.sysadmindoc.billminder.data.CurrencyPrefs
 import com.sysadmindoc.billminder.notification.ReminderScheduler
 
 class BillMinderWidget : GlanceAppWidget() {
@@ -26,6 +29,8 @@ class BillMinderWidget : GlanceAppWidget() {
         val db = BillDatabase.getDatabase(context)
         val repo = BillRepository(db.billDao())
         val bills = repo.getAllBillsList()
+        val displayCurrency = CurrencyPrefs.getDisplayCurrency(context)
+        val manualRates = CurrencyPrefs.getManualRates(context)
 
         val upcoming = bills.map { bill ->
             val nextDue = ReminderScheduler.getNextDueDate(bill)
@@ -38,16 +43,19 @@ class BillMinderWidget : GlanceAppWidget() {
                 daysUntilDue = daysUntil,
                 isPaid = payment != null,
                 isOverdue = payment == null && daysUntil < 0,
-            isAutoPay = bill.isAutoPay
+                isAutoPay = bill.isAutoPay,
+                currency = bill.currency
             )
         }.filter { !it.isPaid }
             .sortedBy { it.daysUntilDue }
             .take(3)
 
-        val totalDue = upcoming.sumOf { it.amount }
+        val totalDue = upcoming.sumOf {
+            CurrencyConverter.convert(it.amount, it.currency, displayCurrency, manualRates)
+        }
 
         provideContent {
-            WidgetContent(upcoming, totalDue)
+            WidgetContent(upcoming, totalDue, displayCurrency)
         }
     }
 }
@@ -58,11 +66,12 @@ data class WidgetBillItem(
     val daysUntilDue: Int,
     val isPaid: Boolean,
     val isOverdue: Boolean,
-    val isAutoPay: Boolean
+    val isAutoPay: Boolean,
+    val currency: String
 )
 
 @Composable
-private fun WidgetContent(bills: List<WidgetBillItem>, totalDue: Double) {
+private fun WidgetContent(bills: List<WidgetBillItem>, totalDue: Double, displayCurrency: String) {
     val bgColor = ColorProvider(Color(0xFF11111B))
     val textColor = ColorProvider(Color(0xFFCDD6F4))
     val subtextColor = ColorProvider(Color(0xFFA6ADC8))
@@ -89,7 +98,7 @@ private fun WidgetContent(bills: List<WidgetBillItem>, totalDue: Double) {
             )
             Spacer(GlanceModifier.defaultWeight())
             Text(
-                "$${"%.0f".format(totalDue)} due",
+                "${CurrencyFormatter.format(totalDue, displayCurrency)} due",
                 style = TextStyle(color = textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             )
         }
@@ -136,7 +145,7 @@ private fun WidgetContent(bills: List<WidgetBillItem>, totalDue: Double) {
                     )
                     Spacer(GlanceModifier.width(8.dp))
                     Text(
-                        "$${"%.0f".format(bill.amount)}",
+                        CurrencyFormatter.format(bill.amount, bill.currency),
                         style = TextStyle(color = textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     )
                 }
