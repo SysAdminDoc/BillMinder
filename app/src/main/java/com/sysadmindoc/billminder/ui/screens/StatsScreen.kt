@@ -30,6 +30,7 @@ import com.sysadmindoc.billminder.ui.theme.*
 import com.sysadmindoc.billminder.viewmodel.BillViewModel
 import com.sysadmindoc.billminder.viewmodel.BillWithStatus
 import com.sysadmindoc.billminder.viewmodel.ChartData
+import com.sysadmindoc.billminder.viewmodel.MonthlyCashFlow
 
 private val chartColors = listOf(
     CatBlue, CatMauve, CatGreen, CatPeach, CatYellow,
@@ -189,10 +190,55 @@ fun StatsScreen(viewModel: BillViewModel) {
             }
         }
 
+        // Twelve-month paid versus outstanding plan
+        if (chartData.cashFlow.any { it.paid > 0 || it.outstanding > 0 }) {
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = CatBase)
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Text("12-Month Plan", style = MaterialTheme.typography.titleMedium, color = CatText)
+                    Text(
+                        "Paid is above zero; projected unpaid due dates are below.",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = CatSubtext0
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        ChartLegend(CatGreen, "Paid")
+                        ChartLegend(CatPeach, "Outstanding")
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    CashFlowChart(
+                        data = chartData.cashFlow,
+                        currency = chartData.currency,
+                        modifier = Modifier.fillMaxWidth().height(240.dp)
+                    )
+                }
+            }
+        }
+
         // What-if panel
         WhatIfPanel(viewModel = viewModel)
 
         Spacer(Modifier.height(80.dp))
+    }
+}
+
+@Composable
+private fun ChartLegend(color: Color, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(10.dp)
+                .clip(CircleShape)
+                .background(color)
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(label, style = MaterialTheme.typography.labelMedium, color = CatSubtext1)
     }
 }
 
@@ -446,6 +492,85 @@ private fun TrendChart(data: List<Pair<String, Double>>, currency: String, modif
         points.forEach { pt ->
             drawCircle(color = CatBlue, radius = 6f, center = pt)
             drawCircle(color = CatCrust, radius = 3f, center = pt)
+        }
+    }
+}
+
+@Composable
+private fun CashFlowChart(
+    data: List<MonthlyCashFlow>,
+    currency: String,
+    modifier: Modifier = Modifier
+) {
+    val maxValue = data.maxOfOrNull { maxOf(it.paid, it.outstanding) }?.coerceAtLeast(1.0) ?: 1.0
+    val animatedProgress = remember { Animatable(0f) }
+    LaunchedEffect(data) {
+        animatedProgress.snapTo(0f)
+        animatedProgress.animateTo(1f, tween(900, easing = FastOutSlowInEasing))
+    }
+
+    Canvas(modifier = modifier) {
+        val padLeft = 52f
+        val padRight = 8f
+        val padTop = 20f
+        val padBottom = 34f
+        val chartWidth = size.width - padLeft - padRight
+        val chartHeight = size.height - padTop - padBottom
+        val centerY = padTop + chartHeight / 2f
+        val halfHeight = chartHeight / 2f - 8f
+        val stepX = chartWidth / data.size
+        val barWidth = (stepX * 0.62f).coerceAtMost(28f)
+        val textPaint = android.graphics.Paint().apply {
+            color = 0xFFA6ADC8.toInt()
+            textSize = 22f
+            isAntiAlias = true
+        }
+
+        listOf(0.5f, 1f).forEach { fraction ->
+            val above = centerY - halfHeight * fraction
+            val below = centerY + halfHeight * fraction
+            drawLine(Color(0xFF313244), Offset(padLeft, above), Offset(size.width - padRight, above), 1f)
+            drawLine(Color(0xFF313244), Offset(padLeft, below), Offset(size.width - padRight, below), 1f)
+        }
+        drawLine(CatOverlay0, Offset(padLeft, centerY), Offset(size.width - padRight, centerY), 2f)
+        drawContext.canvas.nativeCanvas.drawText(
+            CurrencyFormatter.format(maxValue, currency),
+            2f,
+            padTop + 8f,
+            textPaint
+        )
+        drawContext.canvas.nativeCanvas.drawText(
+            CurrencyFormatter.format(maxValue, currency),
+            2f,
+            size.height - padBottom + 8f,
+            textPaint
+        )
+
+        data.forEachIndexed { index, month ->
+            val x = padLeft + stepX * index + (stepX - barWidth) / 2f
+            val positiveHeight = (month.paid / maxValue).toFloat() * halfHeight * animatedProgress.value
+            val negativeHeight = (month.outstanding / maxValue).toFloat() * halfHeight * animatedProgress.value
+            if (positiveHeight > 0) {
+                drawRect(
+                    color = CatGreen,
+                    topLeft = Offset(x, centerY - positiveHeight),
+                    size = Size(barWidth, positiveHeight)
+                )
+            }
+            if (negativeHeight > 0) {
+                drawRect(
+                    color = CatPeach,
+                    topLeft = Offset(x, centerY),
+                    size = Size(barWidth, negativeHeight)
+                )
+            }
+            val label = month.label.substringBefore(' ')
+            drawContext.canvas.nativeCanvas.drawText(
+                label,
+                x + barWidth / 2f - textPaint.measureText(label) / 2f,
+                size.height - 4f,
+                textPaint
+            )
         }
     }
 }

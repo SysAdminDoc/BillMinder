@@ -47,7 +47,8 @@ data class ChartData(
     val lifetimeTotal: Double = 0.0,
     val yearlyProjection: Double = 0.0,
     val forecast: ForecastData = ForecastData(),
-    val currency: String = "USD"
+    val currency: String = "USD",
+    val cashFlow: List<MonthlyCashFlow> = emptyList()
 )
 
 class BillViewModel(application: Application) : AndroidViewModel(application) {
@@ -273,6 +274,12 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             val forecast = ForecastData(total30, total60, total90, count30, count60, count90)
+            val cashFlow = CashFlowProjection.build(
+                allBills,
+                allPayments,
+                now,
+                toDisplay
+            )
 
             _chartData.value = ChartData(
                 categoryBreakdown,
@@ -280,7 +287,8 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
                 lifetimeTotal,
                 yearlyProjection,
                 forecast,
-                targetCurrency
+                targetCurrency,
+                cashFlow
             )
         }
     }
