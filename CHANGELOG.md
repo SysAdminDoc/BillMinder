@@ -11,6 +11,7 @@ All notable changes to BillMinder will be documented in this file.
 - Added encrypted image/PDF receipt attachments to payment records, with private-file viewing and cleanup on undo.
 - Added a 400+ entry merchant alias normalizer for bill entry and JSON restore, including common statement descriptors.
 - Added native bill/payment currencies, offline dashboard FX conversion, manual rate overrides, and currency-aware widgets, notifications, and exports.
+- Added an opt-in full-screen alarm reminder activity with mark-paid, snooze, and dismiss actions.
 
 ## [v2.1.1] - 2026-04-29
 

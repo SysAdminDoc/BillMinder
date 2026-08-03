@@ -30,6 +30,7 @@ A bill tracking and reminder app for Android. Never miss a payment again.
 - **Boot Persistence** - Reminders survive device restarts
 - **Overdue Notifications** - Persistent (non-dismissible) for overdue bills
 - **Cascading Reminders** - Dismissed reminders escalate at 4 hours, 24 hours, and overdue
+- **Full-Screen Alarm Option** - Opt-in alarm-style due screen with mark-paid, snooze, and dismiss actions
 
 ### Dashboard
 - **Monthly Summary** - Total due, paid, remaining with animated progress bar

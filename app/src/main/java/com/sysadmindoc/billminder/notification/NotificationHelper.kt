@@ -61,6 +61,19 @@ object NotificationHelper {
             context, billId.toInt(), intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        val fullScreenIntent = Intent(context, ReminderAlarmActivity::class.java).apply {
+            putExtra("bill_id", billId)
+            putExtra("bill_name", billName)
+            putExtra("amount", amount)
+            putExtra("currency", currency)
+            putExtra("days_until_due", daysUntilDue)
+            putExtra("is_auto_pay", isAutoPay)
+            putExtra("next_due_date", nextDueDate)
+        }
+        val fullScreenPending = PendingIntent.getActivity(
+            context, (billId + 100000).toInt(), fullScreenIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
 
         // Mark paid action
         val markPaidIntent = Intent(context, ReminderReceiver::class.java).apply {
@@ -124,21 +137,30 @@ object NotificationHelper {
         }
         val autoPayNote = if (isAutoPay) " (Auto-Pay)" else ""
 
-        val notification = NotificationCompat.Builder(context, CHANNEL_REMINDERS)
+        val notificationBuilder = NotificationCompat.Builder(context, CHANNEL_REMINDERS)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("$billName - ${CurrencyFormatter.format(amount, currency)}$autoPayNote")
             .setContentText("Bill is $dueText")
             .setStyle(NotificationCompat.BigTextStyle()
                 .bigText("$billName is $dueText.\nAmount: ${CurrencyFormatter.format(amount, currency)}$autoPayNote"))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setCategory(
+                if (ReminderPrefs.isFullScreenEnabled(context)) {
+                    NotificationCompat.CATEGORY_ALARM
+                } else {
+                    NotificationCompat.CATEGORY_REMINDER
+                }
+            )
             .setContentIntent(pendingIntent)
             .addAction(R.drawable.ic_notification, "Paid", markPaidPending)
             .addAction(R.drawable.ic_notification, "1hr", snooze1hPending)
             .addAction(R.drawable.ic_notification, "Tomorrow", snoozeTmrwPending)
             .setDeleteIntent(dismissedPending)
             .setAutoCancel(true)
-            .build()
+        if (ReminderPrefs.isFullScreenEnabled(context)) {
+            notificationBuilder.setFullScreenIntent(fullScreenPending, true)
+        }
+        val notification = notificationBuilder.build()
 
         nm.notify(billId.toInt(), notification)
     }
@@ -161,6 +183,18 @@ object NotificationHelper {
             context, (billId + 20000).toInt(), intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        val fullScreenIntent = Intent(context, ReminderAlarmActivity::class.java).apply {
+            putExtra("bill_id", billId)
+            putExtra("bill_name", billName)
+            putExtra("amount", amount)
+            putExtra("currency", currency)
+            putExtra("days_until_due", -daysPastDue)
+            putExtra("next_due_date", 0L)
+        }
+        val fullScreenPending = PendingIntent.getActivity(
+            context, (billId + 120000).toInt(), fullScreenIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
 
         val markPaidIntent = Intent(context, ReminderReceiver::class.java).apply {
             action = "MARK_PAID"
@@ -172,16 +206,19 @@ object NotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val notification = NotificationCompat.Builder(context, CHANNEL_OVERDUE)
+        val notificationBuilder = NotificationCompat.Builder(context, CHANNEL_OVERDUE)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("OVERDUE: $billName")
             .setContentText("${CurrencyFormatter.format(amount, currency)} is $daysPastDue day(s) past due!")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setContentIntent(pendingIntent)
             .addAction(R.drawable.ic_notification, "Paid", markPaidPending)
             .setOngoing(true)
-            .build()
+        if (ReminderPrefs.isFullScreenEnabled(context)) {
+            notificationBuilder.setFullScreenIntent(fullScreenPending, true)
+        }
+        val notification = notificationBuilder.build()
 
         nm.notify((billId + 20000).toInt(), notification)
     }

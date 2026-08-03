@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.sysadmindoc.billminder.data.CurrencyCatalog
 import com.sysadmindoc.billminder.data.CurrencyConverter
+import com.sysadmindoc.billminder.notification.ReminderPrefs
 import com.sysadmindoc.billminder.security.SecurityPrefs
 import com.sysadmindoc.billminder.ui.theme.*
 import com.sysadmindoc.billminder.viewmodel.BillViewModel
@@ -38,6 +39,7 @@ fun SettingsScreen(
     val displayCurrency by viewModel.displayCurrency.collectAsState()
     var showCurrencyMenu by remember { mutableStateOf(false) }
     var showFxRates by remember { mutableStateOf(false) }
+    var fullScreenReminders by remember { mutableStateOf(ReminderPrefs.isFullScreenEnabled(context)) }
 
     val exportJsonLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
@@ -96,6 +98,16 @@ fun SettingsScreen(
             subtitle = "Require fingerprint/face to open app",
             checked = isBiometricEnabled,
             onCheckedChange = onToggleBiometric
+        )
+        SettingsToggle(
+            icon = Icons.Filled.Alarm,
+            title = "Full-Screen Reminders",
+            subtitle = "Show an alarm-style screen for due bills",
+            checked = fullScreenReminders,
+            onCheckedChange = { enabled ->
+                fullScreenReminders = enabled
+                ReminderPrefs.setFullScreenEnabled(context, enabled)
+            }
         )
 
         // PIN fallback
