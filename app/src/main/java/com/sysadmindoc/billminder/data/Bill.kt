@@ -71,7 +71,10 @@ data class Bill(
     val createdAt: Long = System.currentTimeMillis(),
     val color: Long = 0xFF89B4FA,
     val paymentUrl: String = "",
-    val tags: String = ""
+    val tags: String = "",
+    val isVariableAmount: Boolean = false,
+    val amountMin: Double? = null,
+    val amountMax: Double? = null
 )
 
 @Entity(tableName = "payments")

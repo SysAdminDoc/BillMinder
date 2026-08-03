@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sysadmindoc.billminder.data.BillCategory
+import com.sysadmindoc.billminder.data.HolidayCalendar
 import com.sysadmindoc.billminder.ui.theme.*
 import com.sysadmindoc.billminder.viewmodel.BillWithStatus
 import java.text.SimpleDateFormat
@@ -111,6 +112,9 @@ fun BillCard(
                 Spacer(Modifier.height(2.dp))
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    val holidayNote = if (!billWithStatus.isPaidThisCycle && !billWithStatus.isOverdue) {
+                        HolidayCalendar.getHolidayNote(billWithStatus.nextDueDate)
+                    } else null
                     val dueText = when {
                         billWithStatus.isPaidThisCycle -> "Paid"
                         billWithStatus.isOverdue -> "Overdue ${-billWithStatus.daysUntilDue}d"
@@ -134,6 +138,15 @@ fun BillCard(
                         style = MaterialTheme.typography.bodyMedium,
                         color = CatOverlay0
                     )
+                    if (holidayNote != null) {
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            Icons.Filled.Warning,
+                            contentDescription = holidayNote,
+                            tint = CatYellow,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
                 }
             }
 
@@ -145,6 +158,13 @@ fun BillCard(
                     fontWeight = FontWeight.Bold,
                     color = if (billWithStatus.isPaidThisCycle) CatSubtext0 else CatText
                 )
+                if (bill.isVariableAmount && bill.amountMin != null && bill.amountMax != null) {
+                    Text(
+                        text = "$${"%,.0f".format(bill.amountMin)}-$${"%,.0f".format(bill.amountMax)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = CatOverlay0
+                    )
+                }
                 Spacer(Modifier.height(4.dp))
                 Box(
                     modifier = Modifier

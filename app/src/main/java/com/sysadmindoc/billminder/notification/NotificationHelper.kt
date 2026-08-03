@@ -46,7 +46,8 @@ object NotificationHelper {
         billName: String,
         amount: Double,
         daysUntilDue: Int,
-        isAutoPay: Boolean
+        isAutoPay: Boolean,
+        nextDueDate: Long = 0L
     ) {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -100,6 +101,16 @@ object NotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val dismissedIntent = Intent(context, ReminderReceiver::class.java).apply {
+            action = "REMINDER_DISMISSED"
+            putExtra("bill_id", billId)
+            putExtra("next_due_date", nextDueDate)
+        }
+        val dismissedPending = PendingIntent.getBroadcast(
+            context, (billId + 90000).toInt(), dismissedIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val dueText = when {
             daysUntilDue == 0 -> "due today"
             daysUntilDue == 1 -> "due tomorrow"
@@ -120,6 +131,7 @@ object NotificationHelper {
             .addAction(R.drawable.ic_notification, "Paid", markPaidPending)
             .addAction(R.drawable.ic_notification, "1hr", snooze1hPending)
             .addAction(R.drawable.ic_notification, "Tomorrow", snoozeTmrwPending)
+            .setDeleteIntent(dismissedPending)
             .setAutoCancel(true)
             .build()
 

@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -16,7 +17,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.sysadmindoc.billminder.security.SecurityPrefs
 import com.sysadmindoc.billminder.ui.theme.*
 import com.sysadmindoc.billminder.viewmodel.BillViewModel
 
@@ -24,7 +29,8 @@ import com.sysadmindoc.billminder.viewmodel.BillViewModel
 fun SettingsScreen(
     viewModel: BillViewModel,
     isBiometricEnabled: Boolean,
-    onToggleBiometric: (Boolean) -> Unit
+    onToggleBiometric: (Boolean) -> Unit,
+    onPinConfigured: () -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -56,6 +62,19 @@ fun SettingsScreen(
         }
     }
 
+    val currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+    var yearEndYear by remember { mutableIntStateOf(currentYear) }
+    var showYearPicker by remember { mutableStateOf(false) }
+
+    val exportYearEndLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
+        uri?.let {
+            viewModel.exportYearEndCsv(it, yearEndYear)
+            Toast.makeText(context, "$yearEndYear year-end report exported", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -73,6 +92,112 @@ fun SettingsScreen(
             checked = isBiometricEnabled,
             onCheckedChange = onToggleBiometric
         )
+
+        // PIN fallback
+        var hasPinSet by remember { mutableStateOf(SecurityPrefs.hasPin(context)) }
+        var hasDuressPin by remember { mutableStateOf(SecurityPrefs.hasDuressPin(context)) }
+        var showPinSetup by remember { mutableStateOf(false) }
+        var showDuressPinSetup by remember { mutableStateOf(false) }
+        var showAutoLockMenu by remember { mutableStateOf(false) }
+        var autoLockMinutes by remember { mutableIntStateOf(SecurityPrefs.getAutoLockMinutes(context)) }
+        val autoLockLabel = when (autoLockMinutes) {
+            0 -> "Immediately"
+            1 -> "1 minute"
+            5 -> "5 minutes"
+            15 -> "15 minutes"
+            30 -> "30 minutes"
+            else -> "$autoLockMinutes minutes"
+        }
+
+        SettingsRow(
+            icon = Icons.Filled.Pin,
+            title = if (hasPinSet) "Change PIN" else "Set PIN Fallback",
+            subtitle = if (hasPinSet) "PIN is set. Tap to change." else "Set a PIN as backup for biometric"
+        ) {
+            showPinSetup = true
+        }
+
+        if (hasPinSet) {
+            SettingsRow(
+                icon = Icons.Filled.VisibilityOff,
+                title = if (hasDuressPin) "Change Duress PIN" else "Set Duress PIN",
+                subtitle = if (hasDuressPin) {
+                    "Opens an empty decoy view when entered"
+                } else {
+                    "Optional emergency PIN that hides your bills"
+                }
+            ) {
+                showDuressPinSetup = true
+            }
+        }
+
+        if (hasPinSet || isBiometricEnabled) {
+            Box {
+                SettingsRow(
+                    icon = Icons.Filled.Timer,
+                    title = "Auto-Lock Timeout",
+                    subtitle = "Lock after: $autoLockLabel"
+                ) {
+                    showAutoLockMenu = true
+                }
+                DropdownMenu(
+                    expanded = showAutoLockMenu,
+                    onDismissRequest = { showAutoLockMenu = false },
+                    containerColor = CatSurface0
+                ) {
+                    listOf(0, 1, 5, 15, 30).forEach { minutes ->
+                        val label = when (minutes) {
+                            0 -> "Immediately"
+                            1 -> "1 minute"
+                            else -> "$minutes minutes"
+                        }
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    label,
+                                    color = if (minutes == autoLockMinutes) CatBlue else CatText
+                                )
+                            },
+                            onClick = {
+                                autoLockMinutes = minutes
+                                SecurityPrefs.setAutoLockMinutes(context, minutes)
+                                showAutoLockMenu = false
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        if (showPinSetup) {
+            PinSetupDialog(
+                onDismiss = { showPinSetup = false },
+                onPinSet = { pin ->
+                    SecurityPrefs.setPin(context, pin)
+                    hasPinSet = true
+                    onPinConfigured()
+                    showPinSetup = false
+                    Toast.makeText(context, "PIN set successfully", Toast.LENGTH_SHORT).show()
+                    true
+                }
+            )
+        }
+
+        if (showDuressPinSetup) {
+            PinSetupDialog(
+                title = "Set Duress PIN",
+                onDismiss = { showDuressPinSetup = false },
+                onPinSet = { pin ->
+                    val saved = SecurityPrefs.setDuressPin(context, pin)
+                    if (saved) {
+                        hasDuressPin = true
+                        showDuressPinSetup = false
+                        Toast.makeText(context, "Duress PIN set successfully", Toast.LENGTH_SHORT).show()
+                    }
+                    saved
+                }
+            )
+        }
 
         Spacer(Modifier.height(12.dp))
         Text("Data", style = MaterialTheme.typography.labelLarge, color = CatSubtext0)
@@ -99,6 +224,47 @@ fun SettingsScreen(
             subtitle = "Export payment history as spreadsheet"
         ) {
             exportCsvLauncher.launch("billminder_payments.csv")
+        }
+
+        SettingsRow(
+            icon = Icons.Filled.Summarize,
+            title = "Year-End Report ($yearEndYear)",
+            subtitle = "Tax-ready CSV grouped by category"
+        ) {
+            showYearPicker = true
+        }
+
+        if (showYearPicker) {
+            AlertDialog(
+                onDismissRequest = { showYearPicker = false },
+                containerColor = CatSurface0,
+                title = { Text("Select Year", color = CatText) },
+                text = {
+                    Column {
+                        (currentYear downTo (currentYear - 5)).forEach { year ->
+                            TextButton(
+                                onClick = {
+                                    yearEndYear = year
+                                    showYearPicker = false
+                                    exportYearEndLauncher.launch("billminder_${year}_year_end.csv")
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    year.toString(),
+                                    color = if (year == yearEndYear) CatBlue else CatText,
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showYearPicker = false }) {
+                        Text("Cancel", color = CatSubtext0)
+                    }
+                }
+            )
         }
 
         Spacer(Modifier.height(12.dp))
@@ -184,4 +350,89 @@ private fun SettingsToggle(
             )
         }
     }
+}
+
+@Composable
+private fun PinSetupDialog(
+    title: String = "Set PIN",
+    onDismiss: () -> Unit,
+    onPinSet: (String) -> Boolean
+) {
+    var pin by remember { mutableStateOf("") }
+    var confirmPin by remember { mutableStateOf("") }
+    var step by remember { mutableIntStateOf(1) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CatSurface0,
+        title = {
+            Text(
+                if (step == 1) title else "Confirm PIN",
+                color = CatText
+            )
+        },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    if (step == 1) "Choose a 4-6 digit PIN" else "Re-enter your PIN to confirm",
+                    color = CatSubtext0,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(Modifier.height(16.dp))
+                OutlinedTextField(
+                    value = if (step == 1) pin else confirmPin,
+                    onValueChange = { v ->
+                        val filtered = v.filter { it.isDigit() }.take(6)
+                        if (step == 1) pin = filtered else confirmPin = filtered
+                        error = null
+                    },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = CatText,
+                        unfocusedTextColor = CatText,
+                        focusedBorderColor = CatBlue,
+                        unfocusedBorderColor = CatSurface1,
+                        cursorColor = CatBlue
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("****", color = CatOverlay0, textAlign = TextAlign.Center) }
+                )
+                error?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Text(it, color = CatRed, style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (step == 1) {
+                        if (pin.length < 4) {
+                            error = "PIN must be at least 4 digits"
+                        } else {
+                            step = 2
+                        }
+                    } else {
+                        if (confirmPin != pin) {
+                            error = "PINs don't match"
+                            confirmPin = ""
+                        } else if (!onPinSet(pin)) {
+                            error = "Duress PIN must differ from your regular PIN"
+                            confirmPin = ""
+                        }
+                    }
+                }
+            ) {
+                Text(if (step == 1) "Next" else "Set PIN", color = CatBlue)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = CatSubtext0)
+            }
+        }
+    )
 }

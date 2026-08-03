@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">BillMinder</string>
-    <string name="widget_description">Shows upcoming bills and amounts due</string>
+    <string name="widget_description">Shows the next 3 bills and amounts due</string>
+    <string name="month_widget_description">Monthly bill total and payment progress</string>
 </resources>

@@ -2,6 +2,7 @@ package com.sysadmindoc.billminder.widget
 
 import android.content.Context
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.*
@@ -37,11 +38,11 @@ class BillMinderWidget : GlanceAppWidget() {
                 daysUntilDue = daysUntil,
                 isPaid = payment != null,
                 isOverdue = payment == null && daysUntil < 0,
-                isAutoPay = bill.isAutoPay
+            isAutoPay = bill.isAutoPay
             )
         }.filter { !it.isPaid }
             .sortedBy { it.daysUntilDue }
-            .take(5)
+            .take(3)
 
         val totalDue = upcoming.sumOf { it.amount }
 
@@ -62,13 +63,13 @@ data class WidgetBillItem(
 
 @Composable
 private fun WidgetContent(bills: List<WidgetBillItem>, totalDue: Double) {
-    val bgColor = ColorProvider(android.graphics.Color.parseColor("#11111B"))
-    val textColor = ColorProvider(android.graphics.Color.parseColor("#CDD6F4"))
-    val subtextColor = ColorProvider(android.graphics.Color.parseColor("#A6ADC8"))
-    val accentColor = ColorProvider(android.graphics.Color.parseColor("#89B4FA"))
-    val redColor = ColorProvider(android.graphics.Color.parseColor("#F38BA8"))
-    val yellowColor = ColorProvider(android.graphics.Color.parseColor("#F9E2AF"))
-    val greenColor = ColorProvider(android.graphics.Color.parseColor("#A6E3A1"))
+    val bgColor = ColorProvider(Color(0xFF11111B))
+    val textColor = ColorProvider(Color(0xFFCDD6F4))
+    val subtextColor = ColorProvider(Color(0xFFA6ADC8))
+    val accentColor = ColorProvider(Color(0xFF89B4FA))
+    val redColor = ColorProvider(Color(0xFFF38BA8))
+    val yellowColor = ColorProvider(Color(0xFFF9E2AF))
+    val greenColor = ColorProvider(Color(0xFFA6E3A1))
 
     Column(
         modifier = GlanceModifier

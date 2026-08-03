@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import com.sysadmindoc.billminder.data.Bill
+import com.sysadmindoc.billminder.data.HolidayCalendar
 import com.sysadmindoc.billminder.data.Recurrence
 import java.util.Calendar
 
@@ -14,25 +15,15 @@ object ReminderScheduler {
     fun scheduleReminder(context: Context, bill: Bill) {
         cancelReminder(context, bill.id)
 
-        val nextDueDate = getNextDueDate(bill)
-        val reminderTime = Calendar.getInstance().apply {
-            timeInMillis = nextDueDate
-            add(Calendar.DAY_OF_MONTH, -bill.reminderTiming.days)
-            set(Calendar.HOUR_OF_DAY, 9)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }
+        var scheduledDueDate = getNextDueDate(bill)
+        var reminderTime = getReminderTime(scheduledDueDate, bill.reminderTiming.days)
 
         // If reminder time already passed, schedule for next occurrence
         if (reminderTime.timeInMillis <= System.currentTimeMillis()) {
-            val nextNext = getNextDueDateAfter(bill, nextDueDate)
+            val nextNext = getNextDueDateAfter(bill, scheduledDueDate)
             if (nextNext != null) {
-                reminderTime.timeInMillis = nextNext
-                reminderTime.add(Calendar.DAY_OF_MONTH, -bill.reminderTiming.days)
-                reminderTime.set(Calendar.HOUR_OF_DAY, 9)
-                reminderTime.set(Calendar.MINUTE, 0)
-                reminderTime.set(Calendar.SECOND, 0)
+                scheduledDueDate = nextNext
+                reminderTime = getReminderTime(scheduledDueDate, bill.reminderTiming.days)
             }
         }
 
@@ -40,14 +31,7 @@ object ReminderScheduler {
 
         // Schedule second reminder if set
         bill.secondReminderTiming?.let { second ->
-            val secondTime = Calendar.getInstance().apply {
-                timeInMillis = nextDueDate
-                add(Calendar.DAY_OF_MONTH, -second.days)
-                set(Calendar.HOUR_OF_DAY, 9)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }
+            val secondTime = getReminderTime(scheduledDueDate, second.days)
             if (secondTime.timeInMillis > System.currentTimeMillis()) {
                 scheduleExactAlarm(context, bill.id + 50000, secondTime.timeInMillis, second.days)
             }
@@ -87,8 +71,14 @@ object ReminderScheduler {
 
     fun cancelReminder(context: Context, billId: Long) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        listOf(billId, billId + 50000).forEach { code ->
-            val intent = Intent(context, ReminderReceiver::class.java)
+        listOf(
+            billId to "BILL_REMINDER",
+            (billId + 50000) to "BILL_REMINDER",
+            (billId + 60000) to "SNOOZED_REMINDER",
+            (billId + 70000) to "CASCADE_REMINDER",
+            (billId + 80000) to "CASCADE_REMINDER"
+        ).forEach { (code, action) ->
+            val intent = Intent(context, ReminderReceiver::class.java).apply { this.action = action }
             val pendingIntent = PendingIntent.getBroadcast(
                 context, code.toInt(), intent,
                 PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
@@ -152,7 +142,7 @@ object ReminderScheduler {
         }
     }
 
-    private fun getNextDueDateAfter(bill: Bill, afterMillis: Long): Long? {
+    fun getNextDueDateAfter(bill: Bill, afterMillis: Long): Long? {
         if (bill.recurrence == Recurrence.ONE_TIME) return null
         val after = Calendar.getInstance().apply { timeInMillis = afterMillis }
         return when (bill.recurrence) {
@@ -180,4 +170,14 @@ object ReminderScheduler {
             else -> null
         }
     }
+
+    private fun getReminderTime(dueDate: Long, daysBeforeDue: Int): Calendar =
+        Calendar.getInstance().apply {
+            timeInMillis = HolidayCalendar.previousBusinessDay(dueDate)
+            add(Calendar.DAY_OF_MONTH, -daysBeforeDue)
+            set(Calendar.HOUR_OF_DAY, 9)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
 }

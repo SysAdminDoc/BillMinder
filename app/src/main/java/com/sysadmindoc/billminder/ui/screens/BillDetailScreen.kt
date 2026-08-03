@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sysadmindoc.billminder.data.Bill
+import com.sysadmindoc.billminder.data.HolidayCalendar
 import com.sysadmindoc.billminder.data.Payment
 import com.sysadmindoc.billminder.notification.ReminderScheduler
 import com.sysadmindoc.billminder.ui.components.getCategoryIcon
@@ -206,12 +207,35 @@ fun BillDetailScreen(
                         Spacer(Modifier.height(16.dp))
 
                         val nextDue = ReminderScheduler.getNextDueDate(currentBill)
+                        val holidayNote = HolidayCalendar.getHolidayNote(nextDue)
 
                         DetailRow("Due Date", dateFormat.format(Date(nextDue)))
+                        if (holidayNote != null) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Filled.Warning,
+                                    contentDescription = null,
+                                    tint = CatYellow,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    holidayNote,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = CatYellow
+                                )
+                            }
+                        }
                         DetailRow("Recurrence", currentBill.recurrence.label)
                         DetailRow("Reminder", currentBill.reminderTiming.label)
                         currentBill.secondReminderTiming?.let {
                             DetailRow("2nd Reminder", it.label)
+                        }
+                        if (currentBill.isVariableAmount && currentBill.amountMin != null && currentBill.amountMax != null) {
+                            DetailRow("Amount Range", "$${"%,.2f".format(currentBill.amountMin)} - $${"%,.2f".format(currentBill.amountMax)}")
                         }
                         DetailRow("Auto-Pay", if (currentBill.isAutoPay) "Yes" else "No")
                         DetailRow("Reminders", if (currentBill.isEnabled) "Enabled" else "Disabled")

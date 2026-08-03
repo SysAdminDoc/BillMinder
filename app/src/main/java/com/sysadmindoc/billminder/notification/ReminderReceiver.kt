@@ -23,6 +23,8 @@ class ReminderReceiver : BroadcastReceiver() {
             "MARK_PAID" -> handleMarkPaid(context, intent, repo)
             "SNOOZE" -> handleSnooze(context, intent)
             "SNOOZED_REMINDER" -> handleSnoozedReminder(context, intent)
+            "REMINDER_DISMISSED" -> handleReminderDismissed(context, intent, repo)
+            "CASCADE_REMINDER" -> handleCascadeReminder(context, intent, repo)
             Intent.ACTION_BOOT_COMPLETED, "android.intent.action.QUICKBOOT_POWERON" -> {
                 rescheduleAll(context, repo)
             }
@@ -46,7 +48,8 @@ class ReminderReceiver : BroadcastReceiver() {
                     billName = bill.name,
                     amount = bill.amount,
                     daysUntilDue = daysBeforeDue,
-                    isAutoPay = bill.isAutoPay
+                    isAutoPay = bill.isAutoPay,
+                    nextDueDate = nextDue
                 )
             }
 
@@ -68,6 +71,7 @@ class ReminderReceiver : BroadcastReceiver() {
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
             nm.cancel(billId.toInt())
             nm.cancel((billId + 20000).toInt())
+            cancelCascade(context, billId)
         }
     }
 
@@ -117,6 +121,140 @@ class ReminderReceiver : BroadcastReceiver() {
             daysUntilDue = daysUntilDue,
             isAutoPay = isAutoPay
         )
+    }
+
+    private fun handleReminderDismissed(context: Context, intent: Intent, repo: BillRepository) {
+        val billId = intent.getLongExtra("bill_id", -1)
+        if (billId == -1L) return
+
+        CoroutineScope(Dispatchers.IO).launch {
+            val bill = repo.getBillById(billId) ?: return@launch
+            val nextDue = ReminderScheduler.getNextDueDate(bill)
+            val payment = repo.getPaymentForBillDue(bill.id, nextDue)
+            if (payment == null) {
+                scheduleCascade(
+                    context = context,
+                    billId = bill.id,
+                    billName = bill.name,
+                    amount = bill.amount,
+                    daysUntilDue = ((nextDue - System.currentTimeMillis()) / (24 * 60 * 60 * 1000L)).toInt(),
+                    isAutoPay = bill.isAutoPay,
+                    nextDueDate = nextDue
+                )
+            }
+        }
+    }
+
+    private fun scheduleCascade(
+        context: Context,
+        billId: Long,
+        billName: String,
+        amount: Double,
+        daysUntilDue: Int,
+        isAutoPay: Boolean,
+        nextDueDate: Long
+    ) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val now = System.currentTimeMillis()
+
+        // Schedule 4-hour follow-up
+        val cascade4hIntent = Intent(context, ReminderReceiver::class.java).apply {
+            action = "CASCADE_REMINDER"
+            putExtra("bill_id", billId)
+            putExtra("bill_name", billName)
+            putExtra("amount", amount)
+            putExtra("days_until_due", daysUntilDue)
+            putExtra("is_auto_pay", isAutoPay)
+            putExtra("next_due_date", nextDueDate)
+            putExtra("cascade_level", 1)
+        }
+        val cascade4hPending = PendingIntent.getBroadcast(
+            context, (billId + 70000).toInt(), cascade4hIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        alarmManager.setAndAllowWhileIdle(
+            AlarmManager.RTC_WAKEUP,
+            now + 4 * 60 * 60 * 1000L,
+            cascade4hPending
+        )
+
+        // Schedule 24-hour follow-up
+        val cascade24hIntent = Intent(context, ReminderReceiver::class.java).apply {
+            action = "CASCADE_REMINDER"
+            putExtra("bill_id", billId)
+            putExtra("bill_name", billName)
+            putExtra("amount", amount)
+            putExtra("days_until_due", daysUntilDue)
+            putExtra("is_auto_pay", isAutoPay)
+            putExtra("next_due_date", nextDueDate)
+            putExtra("cascade_level", 2)
+        }
+        val cascade24hPending = PendingIntent.getBroadcast(
+            context, (billId + 80000).toInt(), cascade24hIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        alarmManager.setAndAllowWhileIdle(
+            AlarmManager.RTC_WAKEUP,
+            now + 24 * 60 * 60 * 1000L,
+            cascade24hPending
+        )
+    }
+
+    private fun handleCascadeReminder(context: Context, intent: Intent, repo: BillRepository) {
+        val billId = intent.getLongExtra("bill_id", -1)
+        val nextDueDate = intent.getLongExtra("next_due_date", 0)
+        val cascadeLevel = intent.getIntExtra("cascade_level", 1)
+        if (billId == -1L) return
+
+        CoroutineScope(Dispatchers.IO).launch {
+            val bill = repo.getBillById(billId) ?: return@launch
+            val currentNextDue = ReminderScheduler.getNextDueDate(bill)
+            if (currentNextDue != nextDueDate) return@launch
+
+            // Check if already paid -- skip cascade if so
+            val payment = repo.getPaymentForBillDue(billId, currentNextDue)
+            if (payment != null) return@launch
+
+            val now = System.currentTimeMillis()
+            val daysUntilDue = ((nextDueDate - now) / (1000 * 60 * 60 * 24)).toInt()
+
+            if (daysUntilDue < 0) {
+                // Already overdue
+                NotificationHelper.showOverdueNotification(
+                    context, billId, bill.name, bill.amount, -daysUntilDue
+                )
+            } else {
+                val escalationNote = when (cascadeLevel) {
+                    1 -> " (Follow-up)"
+                    else -> " (URGENT)"
+                }
+                NotificationHelper.showReminderNotification(
+                    context = context,
+                    billId = billId,
+                    billName = "${bill.name}$escalationNote",
+                    amount = bill.amount,
+                    daysUntilDue = daysUntilDue,
+                    isAutoPay = bill.isAutoPay,
+                    nextDueDate = nextDueDate
+                )
+            }
+        }
+    }
+
+    private fun cancelCascade(context: Context, billId: Long) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        listOf(
+            (billId + 70000).toInt() to "CASCADE_REMINDER",
+            (billId + 80000).toInt() to "CASCADE_REMINDER"
+        ).forEach { (requestCode, action) ->
+            val intent = Intent(context, ReminderReceiver::class.java).apply { this.action = action }
+            PendingIntent.getBroadcast(
+                context,
+                requestCode,
+                intent,
+                PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+            )?.let(alarmManager::cancel)
+        }
     }
 
     private fun rescheduleAll(context: Context, repo: BillRepository) {

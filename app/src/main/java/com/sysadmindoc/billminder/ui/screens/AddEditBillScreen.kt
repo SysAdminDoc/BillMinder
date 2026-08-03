@@ -47,6 +47,10 @@ fun AddEditBillScreen(
     var reminderTiming by remember { mutableStateOf(ReminderTiming.ONE_DAY) }
     var secondReminder by remember { mutableStateOf<ReminderTiming?>(null) }
     var isEnabled by remember { mutableStateOf(true) }
+    var isVariableAmount by remember { mutableStateOf(false) }
+    var amountMin by remember { mutableStateOf("") }
+    var amountMax by remember { mutableStateOf("") }
+    var amountRangeError by remember { mutableStateOf<String?>(null) }
     var selectedColor by remember { mutableLongStateOf(0xFF89B4FA) }
     var isLoaded by remember { mutableStateOf(billId == null) }
 
@@ -69,6 +73,9 @@ fun AddEditBillScreen(
             reminderTiming = bill.reminderTiming
             secondReminder = bill.secondReminderTiming
             isEnabled = bill.isEnabled
+            isVariableAmount = bill.isVariableAmount
+            amountMin = bill.amountMin?.toBigDecimal()?.stripTrailingZeros()?.toPlainString() ?: ""
+            amountMax = bill.amountMax?.toBigDecimal()?.stripTrailingZeros()?.toPlainString() ?: ""
             selectedColor = bill.color
             isLoaded = true
         }
@@ -159,13 +166,68 @@ fun AddEditBillScreen(
             OutlinedTextField(
                 value = amount,
                 onValueChange = { v -> if (v.matches(Regex("^\\d*\\.?\\d{0,2}$"))) amount = v },
-                label = { Text("Amount ($)") },
+                label = { Text(if (isVariableAmount) "Expected Amount ($)" else "Amount ($)") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.fillMaxWidth(),
                 leadingIcon = { Text("$", color = CatSubtext0) },
                 colors = billFieldColors()
             )
+
+            // Variable amount toggle + range
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Variable Amount", color = CatText, style = MaterialTheme.typography.bodyLarge)
+                Switch(
+                    checked = isVariableAmount,
+                    onCheckedChange = {
+                        isVariableAmount = it
+                        amountRangeError = null
+                    },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = CatCrust, checkedTrackColor = CatBlue,
+                        uncheckedThumbColor = CatOverlay0, uncheckedTrackColor = CatSurface1
+                    )
+                )
+            }
+
+            if (isVariableAmount) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedTextField(
+                        value = amountMin,
+                        onValueChange = { v -> if (v.matches(Regex("^\\d*\\.?\\d{0,2}$"))) amountMin = v },
+                        label = { Text("Min ($)") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.weight(1f),
+                        leadingIcon = { Text("$", color = CatSubtext0) },
+                        colors = billFieldColors()
+                    )
+                    OutlinedTextField(
+                        value = amountMax,
+                        onValueChange = { v -> if (v.matches(Regex("^\\d*\\.?\\d{0,2}$"))) amountMax = v },
+                        label = { Text("Max ($)") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.weight(1f),
+                        leadingIcon = { Text("$", color = CatSubtext0) },
+                        colors = billFieldColors()
+                    )
+                }
+                amountRangeError?.let {
+                    Text(
+                        text = it,
+                        color = CatRed,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
 
             OutlinedTextField(
                 value = dueDay,
@@ -399,8 +461,19 @@ fun AddEditBillScreen(
             Button(
                 onClick = {
                     val parsedAmount = amount.toDoubleOrNull() ?: 0.0
-                    val parsedDay = dueDay.toIntOrNull()?.coerceIn(1, 31) ?: 1
+                    val maxDueValue = if (recurrence == Recurrence.WEEKLY || recurrence == Recurrence.BIWEEKLY) 7 else 31
+                    val parsedDay = dueDay.toIntOrNull()?.coerceIn(1, maxDueValue) ?: 1
+                    val parsedMin = if (isVariableAmount) amountMin.toDoubleOrNull() else null
+                    val parsedMax = if (isVariableAmount) amountMax.toDoubleOrNull() else null
                     if (name.isBlank() || parsedAmount <= 0) return@Button
+                    if (isVariableAmount) {
+                        val validationError = BillValidation.variableAmountError(parsedAmount, parsedMin, parsedMax)
+                        if (validationError != null) {
+                            amountRangeError = validationError
+                            return@Button
+                        }
+                        amountRangeError = null
+                    }
 
                     val bill = Bill(
                         id = if (isEditing) billId!! else 0,
@@ -418,7 +491,10 @@ fun AddEditBillScreen(
                         reminderTiming = reminderTiming,
                         secondReminderTiming = secondReminder,
                         isEnabled = isEnabled,
-                        color = selectedColor
+                        color = selectedColor,
+                        isVariableAmount = isVariableAmount,
+                        amountMin = parsedMin,
+                        amountMax = parsedMax
                     )
                     viewModel.saveBill(bill)
                     onNavigateBack()

@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -25,12 +25,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import androidx.core.content.edit
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
+import com.sysadmindoc.billminder.security.SecurityPrefs
 import com.sysadmindoc.billminder.ui.screens.*
 import com.sysadmindoc.billminder.ui.theme.*
 import com.sysadmindoc.billminder.viewmodel.BillViewModel
@@ -44,6 +44,7 @@ class MainActivity : FragmentActivity() {
 
     private var isUnlocked = mutableStateOf(false)
     private var biometricAvailable = false
+    private var lastActiveTime = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,11 +54,21 @@ class MainActivity : FragmentActivity() {
         biometricAvailable = BiometricManager.from(this)
             .canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.BIOMETRIC_WEAK) == BiometricManager.BIOMETRIC_SUCCESS
 
-        val prefs = getSharedPreferences("billminder_prefs", Context.MODE_PRIVATE)
-        val biometricEnabled = prefs.getBoolean("biometric_enabled", false)
+        val biometricEnabled = SecurityPrefs.isBiometricEnabled(this)
+        val pinSet = SecurityPrefs.hasPin(this)
+
+        // Prevent screenshots in app switcher when security is enabled
+        if (biometricEnabled || pinSet) {
+            window.setFlags(
+                WindowManager.LayoutParams.FLAG_SECURE,
+                WindowManager.LayoutParams.FLAG_SECURE
+            )
+        }
 
         if (biometricEnabled && biometricAvailable) {
             promptBiometric()
+        } else if (pinSet) {
+            // PIN-only mode, will show PIN entry
         } else {
             isUnlocked.value = true
         }
@@ -65,17 +76,77 @@ class MainActivity : FragmentActivity() {
         setContent {
             BillMinderTheme {
                 val unlocked by isUnlocked
+                var pinConfigured by remember { mutableStateOf(pinSet) }
+                var duressMode by remember { mutableStateOf(false) }
 
                 if (unlocked) {
-                    BillMinderNavHost(
-                        biometricAvailable = biometricAvailable,
-                        isBiometricEnabled = biometricEnabled,
-                        onToggleBiometric = { enabled ->
-                            prefs.edit { putBoolean("biometric_enabled", enabled) }
+                    if (duressMode) {
+                        DecoyScreen()
+                    } else {
+                        BillMinderNavHost(
+                            biometricAvailable = biometricAvailable,
+                            isBiometricEnabled = biometricEnabled,
+                            onToggleBiometric = { enabled ->
+                                SecurityPrefs.setBiometricEnabled(this, enabled)
+                            },
+                            onPinConfigured = { pinConfigured = true }
+                        )
+                    }
+                } else {
+                    LockScreen(
+                        onUnlock = {
+                            if (biometricAvailable && biometricEnabled) {
+                                promptBiometric()
+                            }
+                        },
+                        showBiometric = biometricAvailable && biometricEnabled,
+                        showPin = pinConfigured,
+                        onPinSubmit = { enteredPin ->
+                            if (SecurityPrefs.verifyDuressPin(this, enteredPin)) {
+                                duressMode = true
+                                isUnlocked.value = true
+                                true
+                            } else {
+                                val isValid = SecurityPrefs.verifyPin(this, enteredPin)
+                                if (isValid) {
+                                    isUnlocked.value = true
+                                }
+                                isValid
+                            }
                         }
                     )
-                } else {
-                    LockScreen(onUnlock = { promptBiometric() })
+                }
+            }
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        lastActiveTime = System.currentTimeMillis()
+        val biometricEnabled = SecurityPrefs.isBiometricEnabled(this)
+        val pinSet = SecurityPrefs.hasPin(this)
+        val securityEnabled = (biometricEnabled && biometricAvailable) || pinSet
+        if (securityEnabled && SecurityPrefs.getAutoLockMinutes(this) == 0) {
+            isUnlocked.value = false
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (isUnlocked.value && lastActiveTime > 0) {
+            val autoLockMinutes = SecurityPrefs.getAutoLockMinutes(this)
+            val biometricEnabled = SecurityPrefs.isBiometricEnabled(this)
+            val pinSet = SecurityPrefs.hasPin(this)
+            val securityEnabled = (biometricEnabled && biometricAvailable) || pinSet
+
+            if (securityEnabled && autoLockMinutes >= 0) {
+                val elapsed = System.currentTimeMillis() - lastActiveTime
+                val timeoutMs = autoLockMinutes * 60 * 1000L
+                if (elapsed > timeoutMs) {
+                    isUnlocked.value = false
+                    if (biometricEnabled && biometricAvailable) {
+                        promptBiometric()
+                    }
                 }
             }
         }
@@ -88,12 +159,7 @@ class MainActivity : FragmentActivity() {
                 runOnUiThread { isUnlocked.value = true }
             }
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                if (errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON ||
-                    errorCode == BiometricPrompt.ERROR_USER_CANCELED) {
-                    // User cancelled, stay on lock screen
-                } else {
-                    runOnUiThread { isUnlocked.value = true }
-                }
+                runOnUiThread { isUnlocked.value = false }
             }
         })
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
@@ -116,12 +182,21 @@ class MainActivity : FragmentActivity() {
 }
 
 @Composable
-private fun LockScreen(onUnlock: () -> Unit) {
+private fun LockScreen(
+    onUnlock: () -> Unit,
+    showBiometric: Boolean = true,
+    showPin: Boolean = false,
+    onPinSubmit: ((String) -> Boolean)? = null
+) {
+    var pinEntry by remember { mutableStateOf("") }
+    var pinError by remember { mutableStateOf(false) }
+
     Box(
         modifier = Modifier.fillMaxSize().background(CatCrust),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(32.dp)) {
             Icon(
                 Icons.Filled.Lock,
                 null,
@@ -131,16 +206,82 @@ private fun LockScreen(onUnlock: () -> Unit) {
             Spacer(Modifier.height(16.dp))
             Text("BillMinder", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = CatText)
             Spacer(Modifier.height(8.dp))
-            Text("Tap to unlock", color = CatSubtext0)
-            Spacer(Modifier.height(24.dp))
-            Button(
-                onClick = onUnlock,
-                colors = ButtonDefaults.buttonColors(containerColor = CatBlue, contentColor = CatCrust)
-            ) {
-                Icon(Icons.Filled.Fingerprint, null)
-                Spacer(Modifier.width(8.dp))
-                Text("Unlock")
+            Text("Authenticate to continue", color = CatSubtext0)
+
+            if (showBiometric) {
+                Spacer(Modifier.height(24.dp))
+                Button(
+                    onClick = onUnlock,
+                    colors = ButtonDefaults.buttonColors(containerColor = CatBlue, contentColor = CatCrust)
+                ) {
+                    Icon(Icons.Filled.Fingerprint, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Unlock with Biometric")
+                }
             }
+
+            if (showPin) {
+                Spacer(Modifier.height(if (showBiometric) 16.dp else 24.dp))
+                if (showBiometric) {
+                    Text("or enter PIN", color = CatSubtext0, style = androidx.compose.material3.MaterialTheme.typography.labelMedium)
+                    Spacer(Modifier.height(8.dp))
+                }
+                OutlinedTextField(
+                    value = pinEntry,
+                    onValueChange = { v ->
+                        pinEntry = v.filter { it.isDigit() }.take(6)
+                        pinError = false
+                    },
+                    singleLine = true,
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword
+                    ),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = CatText,
+                        unfocusedTextColor = CatText,
+                        focusedBorderColor = if (pinError) CatRed else CatBlue,
+                        unfocusedBorderColor = if (pinError) CatRed else CatSurface1,
+                        cursorColor = CatBlue
+                    ),
+                    placeholder = { Text("Enter PIN", color = CatOverlay0) },
+                    modifier = Modifier.width(200.dp)
+                )
+                if (pinError) {
+                    Spacer(Modifier.height(4.dp))
+                    Text("Incorrect PIN", color = CatRed, style = MaterialTheme.typography.labelSmall)
+                }
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = {
+                        val success = onPinSubmit?.invoke(pinEntry) ?: false
+                        if (!success) {
+                            pinError = true
+                            pinEntry = ""
+                        }
+                    },
+                    enabled = pinEntry.length >= 4,
+                    colors = ButtonDefaults.buttonColors(containerColor = CatBlue, contentColor = CatCrust)
+                ) {
+                    Text("Submit")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DecoyScreen() {
+    Box(
+        modifier = Modifier.fillMaxSize().background(CatCrust),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(Icons.Filled.ReceiptLong, contentDescription = null, tint = CatBlue, modifier = Modifier.size(48.dp))
+            Spacer(Modifier.height(16.dp))
+            Text("No bills yet", color = CatText, style = MaterialTheme.typography.headlineSmall)
+            Spacer(Modifier.height(8.dp))
+            Text("Add a bill to get started", color = CatSubtext0)
         }
     }
 }
@@ -156,7 +297,8 @@ enum class BottomTab(val label: String, val icon: ImageVector) {
 fun BillMinderNavHost(
     biometricAvailable: Boolean,
     isBiometricEnabled: Boolean,
-    onToggleBiometric: (Boolean) -> Unit
+    onToggleBiometric: (Boolean) -> Unit,
+    onPinConfigured: () -> Unit
 ) {
     val navController = rememberNavController()
     val viewModel: BillViewModel = viewModel()
@@ -242,7 +384,8 @@ fun BillMinderNavHost(
                     onToggleBiometric = { enabled ->
                         biometricState = enabled
                         onToggleBiometric(enabled)
-                    }
+                    },
+                    onPinConfigured = onPinConfigured
                 )
             }
 

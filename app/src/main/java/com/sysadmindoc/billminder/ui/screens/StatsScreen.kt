@@ -24,8 +24,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sysadmindoc.billminder.data.BillCategory
+import com.sysadmindoc.billminder.data.Recurrence
 import com.sysadmindoc.billminder.ui.theme.*
 import com.sysadmindoc.billminder.viewmodel.BillViewModel
+import com.sysadmindoc.billminder.viewmodel.BillWithStatus
 import com.sysadmindoc.billminder.viewmodel.ChartData
 
 private val chartColors = listOf(
@@ -106,6 +108,27 @@ fun StatsScreen(viewModel: BillViewModel) {
             }
         }
 
+        // Forecast panel
+        if (chartData.forecast.next90Bills > 0) {
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = CatBase)
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Text("Forecast", style = MaterialTheme.typography.titleMedium, color = CatText)
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        ForecastColumn("30 days", chartData.forecast.next30Days, chartData.forecast.next30Bills, CatGreen)
+                        ForecastColumn("60 days", chartData.forecast.next60Days, chartData.forecast.next60Bills, CatYellow)
+                        ForecastColumn("90 days", chartData.forecast.next90Days, chartData.forecast.next90Bills, CatPeach)
+                    }
+                }
+            }
+        }
+
         // Category pie chart
         if (chartData.categoryBreakdown.isNotEmpty()) {
             Card(
@@ -165,7 +188,140 @@ fun StatsScreen(viewModel: BillViewModel) {
             }
         }
 
+        // What-if panel
+        WhatIfPanel(viewModel = viewModel)
+
         Spacer(Modifier.height(80.dp))
+    }
+}
+
+@Composable
+private fun WhatIfPanel(viewModel: BillViewModel) {
+    val billsWithStatus by viewModel.billsWithStatus.collectAsState()
+    val recurringBills = billsWithStatus.filter { !it.isPaidThisCycle && it.bill.recurrence != Recurrence.ONE_TIME }
+    var expanded by remember { mutableStateOf(false) }
+    val droppedBills = remember { mutableStateListOf<Long>() }
+
+    if (recurringBills.isEmpty()) return
+
+    val annualSavings = recurringBills
+        .filter { it.bill.id in droppedBills }
+        .sumOf { bws ->
+            val multiplier = when (bws.bill.recurrence) {
+                Recurrence.WEEKLY -> 52
+                Recurrence.BIWEEKLY -> 26
+                Recurrence.MONTHLY -> 12
+                Recurrence.QUARTERLY -> 4
+                Recurrence.YEARLY -> 1
+                Recurrence.ONE_TIME -> 0
+            }
+            bws.bill.amount * multiplier
+        }
+
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = CatBase)
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("What If?", style = MaterialTheme.typography.titleMedium, color = CatText)
+                    Text(
+                        "Toggle bills to see annual savings",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = CatSubtext0
+                    )
+                }
+                if (annualSavings > 0) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = CatGreen.copy(alpha = 0.15f)
+                    ) {
+                        Text(
+                            "Save $${"%,.0f".format(annualSavings)}/yr",
+                            color = CatGreen,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            recurringBills.take(if (expanded) recurringBills.size else 5).forEach { bws ->
+                val isDropped = bws.bill.id in droppedBills
+                val multiplier = when (bws.bill.recurrence) {
+                    Recurrence.WEEKLY -> 52
+                    Recurrence.BIWEEKLY -> 26
+                    Recurrence.MONTHLY -> 12
+                    Recurrence.QUARTERLY -> 4
+                    Recurrence.YEARLY -> 1
+                    Recurrence.ONE_TIME -> 0
+                }
+                val yearlyAmount = bws.bill.amount * multiplier
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = isDropped,
+                        onCheckedChange = {
+                            if (isDropped) droppedBills.remove(bws.bill.id)
+                            else droppedBills.add(bws.bill.id)
+                        },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = CatGreen,
+                            uncheckedColor = CatOverlay0,
+                            checkmarkColor = CatCrust
+                        ),
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        bws.bill.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (isDropped) CatSubtext0 else CatText,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            "$${"%,.2f".format(bws.bill.amount)}/${bws.bill.recurrence.label.take(3).lowercase()}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = CatSubtext0
+                        )
+                        if (isDropped) {
+                            Text(
+                                "-$${"%,.0f".format(yearlyAmount)}/yr",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = CatGreen,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (recurringBills.size > 5) {
+                TextButton(
+                    onClick = { expanded = !expanded },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        if (expanded) "Show less" else "Show all ${recurringBills.size} bills",
+                        color = CatBlue
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -288,5 +444,28 @@ private fun TrendChart(data: List<Pair<String, Double>>, modifier: Modifier = Mo
             drawCircle(color = CatBlue, radius = 6f, center = pt)
             drawCircle(color = CatCrust, radius = 3f, center = pt)
         }
+    }
+}
+
+@Composable
+private fun ForecastColumn(label: String, amount: Double, count: Int, color: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = CatSubtext0
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "$${"%,.0f".format(amount)}",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            color = color
+        )
+        Text(
+            "$count bills",
+            style = MaterialTheme.typography.labelSmall,
+            color = CatOverlay0
+        )
     }
 }

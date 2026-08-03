@@ -29,11 +29,21 @@ data class MonthlySummary(
     val allPaid: Boolean = false
 )
 
+data class ForecastData(
+    val next30Days: Double = 0.0,
+    val next60Days: Double = 0.0,
+    val next90Days: Double = 0.0,
+    val next30Bills: Int = 0,
+    val next60Bills: Int = 0,
+    val next90Bills: Int = 0
+)
+
 data class ChartData(
     val categoryBreakdown: List<Pair<BillCategory, Double>> = emptyList(),
     val monthlyTrend: List<Pair<String, Double>> = emptyList(),
     val lifetimeTotal: Double = 0.0,
-    val yearlyProjection: Double = 0.0
+    val yearlyProjection: Double = 0.0,
+    val forecast: ForecastData = ForecastData()
 )
 
 class BillViewModel(application: Application) : AndroidViewModel(application) {
@@ -168,7 +178,36 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
             val lifetimeTotal = repo.getTotalLifetimeSpending()
             val yearlyProjection = if (monthsCounted > 0) (totalLast12 / monthsCounted) * 12 else 0.0
 
-            _chartData.value = ChartData(categoryBreakdown, monthlyTrend, lifetimeTotal, yearlyProjection)
+            // Forecast: compute upcoming bills in 30/60/90 days
+            val allBills = repo.getAllBillsList()
+            val now = System.currentTimeMillis()
+            val day30 = now + 30L * 24 * 60 * 60 * 1000
+            val day60 = now + 60L * 24 * 60 * 60 * 1000
+            val day90 = now + 90L * 24 * 60 * 60 * 1000
+            val paidCycles = repo.getAllPaymentsForExport()
+                .asSequence()
+                .map { it.billId to it.dueDate }
+                .toSet()
+            var total30 = 0.0; var total60 = 0.0; var total90 = 0.0
+            var count30 = 0; var count60 = 0; var count90 = 0
+            allBills.forEach { bill ->
+                // Collect all due dates for this bill within 90 days
+                var dueDate = ReminderScheduler.getNextDueDate(bill)
+                val seen = mutableSetOf<Long>()
+                while (dueDate <= day90 && seen.add(dueDate)) {
+                    if (dueDate >= now && (bill.id to dueDate) !in paidCycles) {
+                        if (dueDate <= day30) { total30 += bill.amount; count30++ }
+                        if (dueDate <= day60) { total60 += bill.amount; count60++ }
+                        total90 += bill.amount; count90++
+                    }
+                    val nextDue = ReminderScheduler.getNextDueDateAfter(bill, dueDate)
+                    if (nextDue == null || nextDue <= dueDate) break
+                    dueDate = nextDue
+                }
+            }
+            val forecast = ForecastData(total30, total60, total90, count30, count60, count90)
+
+            _chartData.value = ChartData(categoryBreakdown, monthlyTrend, lifetimeTotal, yearlyProjection, forecast)
         }
     }
 
@@ -289,6 +328,12 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
     fun exportCsv(uri: Uri) {
         viewModelScope.launch {
             BackupManager.exportCsv(getApplication(), uri, repo)
+        }
+    }
+
+    fun exportYearEndCsv(uri: Uri, year: Int) {
+        viewModelScope.launch {
+            BackupManager.exportYearEndCsv(getApplication(), uri, repo, year)
         }
     }
 }
