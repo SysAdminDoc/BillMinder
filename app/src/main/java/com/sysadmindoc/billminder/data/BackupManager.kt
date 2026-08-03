@@ -76,14 +76,21 @@ object BackupManager {
         table.rows.forEach { row ->
             val rawName = table.value(row, CsvField.NAME, mapping)
             val rawAmount = table.value(row, CsvField.AMOUNT, mapping)
-            val recurrence = CsvValueParser.recurrence(table.value(row, CsvField.RECURRENCE, mapping))
+            val rawRecurrence = table.value(row, CsvField.RECURRENCE, mapping)
+            val recurrence = if (rawRecurrence.isBlank()) {
+                mapping.defaultRecurrence
+            } else {
+                CsvValueParser.recurrence(rawRecurrence)
+            }
             val dueDate = table.value(row, CsvField.DUE_DATE, mapping)
                 .takeIf { it.isNotBlank() }
                 ?.let(CsvValueParser::dateMillis)
             val dueDay = table.value(row, CsvField.DUE_DAY, mapping)
                 .toIntOrNull()
                 ?: dueDate?.let { CsvValueParser.dueDay(it, recurrence) }
-            val amount = CsvValueParser.amount(rawAmount)
+            val amount = CsvValueParser.amount(rawAmount)?.let {
+                if (mapping.absoluteAmounts) kotlin.math.abs(it) else it
+            }
             val validDueDay = dueDay != null && dueDay in if (
                 recurrence == Recurrence.WEEKLY || recurrence == Recurrence.BIWEEKLY
             ) 1..7 else 1..31
@@ -129,6 +136,7 @@ object BackupManager {
             val paymentAmount = table.value(row, CsvField.PAYMENT_AMOUNT, mapping)
                 .takeIf { it.isNotBlank() }
                 ?.let(CsvValueParser::amount)
+                ?.let { if (mapping.absoluteAmounts) kotlin.math.abs(it) else it }
                 ?: paymentDate?.let { amount }
             if (paymentDate != null && paymentAmount != null && paymentAmount > 0.0) {
                 repo.insertPayment(

@@ -33,6 +33,7 @@ import com.sysadmindoc.billminder.data.CurrencyCatalog
 import com.sysadmindoc.billminder.data.CurrencyConverter
 import com.sysadmindoc.billminder.data.CsvImport
 import com.sysadmindoc.billminder.data.CsvImportMapping
+import com.sysadmindoc.billminder.data.CsvMigrationPreset
 import com.sysadmindoc.billminder.data.CsvTable
 import com.sysadmindoc.billminder.notification.ReminderPrefs
 import com.sysadmindoc.billminder.notification.GeofenceManager
@@ -439,7 +440,7 @@ fun SettingsScreen(
         SettingsRow(
             icon = Icons.Filled.FileUpload,
             title = "Import CSV",
-            subtitle = "Map columns from a spreadsheet into bills and payments"
+            subtitle = "Map columns or migrate Mint, Tiller, and Empower exports"
         ) {
             importCsvLauncher.launch(arrayOf("text/csv", "text/plain", "application/vnd.ms-excel"))
         }
@@ -922,12 +923,15 @@ private fun CsvMappingDialog(
         CsvField.PAYMENT_CURRENCY,
         CsvField.CONFIRMATION
     )
+    val initialPreset = remember { CsvMigrationPreset.detect(table.headers) }
+    var selectedPreset by remember { mutableStateOf(initialPreset) }
     val selected = remember {
         mutableStateMapOf<CsvField, Int?>().apply {
-            putAll(CsvImport.suggestedMapping(table.headers))
+            putAll(initialPreset.mapping(table.headers).columns)
         }
     }
     var expandedField by remember { mutableStateOf<CsvField?>(null) }
+    var showPresetMenu by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
@@ -939,6 +943,36 @@ private fun CsvMappingDialog(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                Text("Source preset", color = CatSubtext0, style = MaterialTheme.typography.labelMedium)
+                Box {
+                    TextButton(onClick = { showPresetMenu = true }) {
+                        Text(selectedPreset.label, color = CatBlue)
+                    }
+                    DropdownMenu(
+                        expanded = showPresetMenu,
+                        onDismissRequest = { showPresetMenu = false },
+                        containerColor = CatSurface0
+                    ) {
+                        CsvMigrationPreset.entries.forEach { preset ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        preset.label,
+                                        color = if (preset == selectedPreset) CatBlue else CatText
+                                    )
+                                },
+                                onClick = {
+                                    selectedPreset = preset
+                                    selected.clear()
+                                    selected.putAll(preset.mapping(table.headers).columns)
+                                    error = null
+                                    showPresetMenu = false
+                                }
+                            )
+                        }
+                    }
+                }
+                Text(selectedPreset.description, color = CatSubtext0, style = MaterialTheme.typography.bodySmall)
                 Text(
                     "${table.rows.size} rows detected. Required fields are marked with *.",
                     color = CatSubtext0,
@@ -995,9 +1029,15 @@ private fun CsvMappingDialog(
             TextButton(
                 onClick = {
                     val mapping = CsvImportMapping(selected.toMap())
+                    val preset = selectedPreset.mapping(table.headers)
                     if (mapping.isReady()) {
                         error = null
-                        onImport(mapping)
+                        onImport(
+                            mapping.copy(
+                                defaultRecurrence = preset.defaultRecurrence,
+                                absoluteAmounts = preset.absoluteAmounts
+                            )
+                        )
                     } else {
                         error = "Map Bill name, Bill amount, and Due date or Due day before importing."
                     }

@@ -36,7 +36,9 @@ data class CsvTable(
 }
 
 data class CsvImportMapping(
-    val columns: Map<CsvField, Int?>
+    val columns: Map<CsvField, Int?>,
+    val defaultRecurrence: Recurrence = Recurrence.MONTHLY,
+    val absoluteAmounts: Boolean = false
 ) {
     fun column(field: CsvField): Int? = columns[field]
 
@@ -44,6 +46,52 @@ data class CsvImportMapping(
         column(CsvField.NAME) != null &&
             column(CsvField.AMOUNT) != null &&
             (column(CsvField.DUE_DATE) != null || column(CsvField.DUE_DAY) != null)
+}
+
+enum class CsvMigrationPreset(
+    val label: String,
+    val description: String
+) {
+    AUTO_DETECT("Auto-detect", "Use matching header names and standard bill defaults"),
+    MINT("Mint", "Import transaction descriptions as one-time paid bills"),
+    TILLER("Tiller", "Import transaction descriptions as one-time paid bills"),
+    EMPOWER("Empower", "Import merchants as one-time paid bills");
+
+    fun mapping(headers: List<String>): CsvImportMapping {
+        if (this == AUTO_DETECT) return CsvImportMapping(CsvImport.suggestedMapping(headers))
+        val columns = CsvImport.suggestedMapping(headers).toMutableMap()
+        columns[CsvField.NAME] = when (this) {
+            MINT, TILLER -> CsvImport.findColumn(headers, listOf("description", "originaldescription", "merchant"))
+            EMPOWER -> CsvImport.findColumn(headers, listOf("merchant", "description", "originaldescription"))
+            AUTO_DETECT -> columns[CsvField.NAME]
+        }
+        columns[CsvField.AMOUNT] = CsvImport.findColumn(headers, listOf("amount", "transactionamount"))
+        columns[CsvField.DUE_DATE] = CsvImport.findColumn(headers, listOf("date", "transactiondate"))
+        columns[CsvField.DUE_DAY] = null
+        columns[CsvField.PAYMENT_DATE] = columns[CsvField.DUE_DATE]
+        columns[CsvField.PAYMENT_AMOUNT] = columns[CsvField.AMOUNT]
+        columns[CsvField.RECURRENCE] = null
+        columns[CsvField.AUTO_PAY] = null
+        columns[CsvField.NOTES] = CsvImport.findColumn(headers, listOf("notes", "note", "memo", "account", "accountname"))
+        columns[CsvField.PAYMENT_CURRENCY] = CsvImport.findColumn(headers, listOf("paymentcurrency", "currency"))
+        return CsvImportMapping(
+            columns = columns,
+            defaultRecurrence = Recurrence.ONE_TIME,
+            absoluteAmounts = true
+        )
+    }
+
+    companion object {
+        fun detect(headers: List<String>): CsvMigrationPreset {
+            val normalized = headers.map { it.trim().lowercase(Locale.ROOT).replace(Regex("[^a-z0-9]"), "") }
+            return when {
+                normalized.any { it == "originaldescription" || it == "transactiontype" } -> MINT
+                normalized.any { it == "merchant" } && normalized.any { it.contains("account") } -> EMPOWER
+                normalized.any { it == "description" } && normalized.any { it.contains("account") } -> TILLER
+                else -> AUTO_DETECT
+            }
+        }
+    }
 }
 
 data class CsvImportResult(
@@ -56,18 +104,20 @@ object CsvImport {
     fun parse(text: String): CsvTable = CsvParser.parse(text)
 
     fun suggestedMapping(headers: List<String>): Map<CsvField, Int?> =
-        CsvField.entries.associateWith { field ->
-            val normalizedHeaders = headers.map { normalizeHeader(it) }
-            val exact = field.aliases.firstNotNullOfOrNull { alias ->
-                normalizedHeaders.indexOfFirst { it == normalizeHeader(alias) }
-                    .takeIf { it >= 0 }
-            }
-            exact ?: field.aliases.firstNotNullOfOrNull { alias ->
-                val normalizedAlias = normalizeHeader(alias)
-                normalizedHeaders.indexOfFirst { it.contains(normalizedAlias) }
-                    .takeIf { it >= 0 }
-            }
+        CsvField.entries.associateWith { field -> findColumn(headers, field.aliases) }
+
+    fun findColumn(headers: List<String>, aliases: List<String>): Int? {
+        val normalizedHeaders = headers.map { normalizeHeader(it) }
+        val exact = aliases.firstNotNullOfOrNull { alias ->
+            normalizedHeaders.indexOfFirst { it == normalizeHeader(alias) }
+                .takeIf { it >= 0 }
         }
+        return exact ?: aliases.firstNotNullOfOrNull { alias ->
+            val normalizedAlias = normalizeHeader(alias)
+            normalizedHeaders.indexOfFirst { it.contains(normalizedAlias) }
+                .takeIf { it >= 0 }
+        }
+    }
 
     suspend fun read(context: Context, uri: Uri): CsvTable? {
         val text = context.contentResolver.openInputStream(uri)?.use { input ->

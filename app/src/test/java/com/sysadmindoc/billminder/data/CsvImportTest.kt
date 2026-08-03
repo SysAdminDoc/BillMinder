@@ -36,6 +36,20 @@ class CsvImportTest {
     }
 
     @Test
+    fun migrationPresetsMapTransactionsToOneTimePaidBills() {
+        val headers = listOf("Date", "Description", "Amount", "Category", "Account Name", "Original Description")
+
+        assertEquals(CsvMigrationPreset.MINT, CsvMigrationPreset.detect(headers))
+        val mapping = CsvMigrationPreset.MINT.mapping(headers)
+
+        assertEquals(1, mapping.column(CsvField.NAME))
+        assertEquals(0, mapping.column(CsvField.DUE_DATE))
+        assertEquals(0, mapping.column(CsvField.PAYMENT_DATE))
+        assertEquals(Recurrence.ONE_TIME, mapping.defaultRecurrence)
+        assertTrue(mapping.absoluteAmounts)
+    }
+
+    @Test
     fun valuesParseMoneyAndStrictDates() {
         assertEquals(1234.5, requireNotNull(CsvValueParser.amount("\$1,234.50")), 0.0001)
         assertTrue(CsvValueParser.dateMillis("2026-08-03") != null)

@@ -60,6 +60,7 @@ A bill tracking and reminder app for Android. Never miss a payment again.
 - **JSON Backup/Restore** - Full export and import of all data
 - **CSV Export** - Payment history as spreadsheet
 - **CSV Import** - Preview a spreadsheet, map columns, and import bills with optional payment history
+- **Migration Presets** - One-step column mappings for Mint, Tiller, and Empower transaction exports
 - **Year-End Export** - Tax-ready CSV grouped by category
 - **Currency-Aware Exports** - JSON and CSV preserve bill/payment currency codes
 - **Room Database** - SQLite with migration support
