@@ -51,6 +51,7 @@ A bill tracking and reminder app for Android. Never miss a payment again.
 - **Category Pie Chart** - Animated donut chart with legend
 - **Monthly Trend** - 6-month line chart with grid
 - **12-Month Plan** - Diverging paid-versus-outstanding view for upcoming bill cycles
+- **Category Budgets** - Set monthly caps per category and track them with progress rings
 - **Forecast** - 30/60/90-day upcoming totals
 - **What-If Planning** - Toggle recurring bills to preview annual savings
 - **Per-Bill Lifetime** - Total spent on each individual bill with average

@@ -20,10 +20,13 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sysadmindoc.billminder.data.BillCategory
+import com.sysadmindoc.billminder.data.BudgetMath
+import com.sysadmindoc.billminder.data.BudgetPrefs
 import com.sysadmindoc.billminder.data.CurrencyFormatter
 import com.sysadmindoc.billminder.data.Recurrence
 import com.sysadmindoc.billminder.ui.theme.*
@@ -42,6 +45,7 @@ private val chartColors = listOf(
 fun StatsScreen(viewModel: BillViewModel) {
     val chartData by viewModel.chartData.collectAsState()
     val summary by viewModel.monthlySummary.collectAsState()
+    val context = LocalContext.current
 
     LaunchedEffect(Unit) { viewModel.loadChartData() }
 
@@ -176,6 +180,8 @@ fun StatsScreen(viewModel: BillViewModel) {
             }
         }
 
+        CategoryBudgetsPanel(viewModel, chartData, context)
+
         // Monthly trend
         if (chartData.monthlyTrend.any { it.second > 0 }) {
             Card(
@@ -239,6 +245,80 @@ private fun ChartLegend(color: Color, label: String) {
         )
         Spacer(Modifier.width(6.dp))
         Text(label, style = MaterialTheme.typography.labelMedium, color = CatSubtext1)
+    }
+}
+
+@Composable
+private fun CategoryBudgetsPanel(
+    viewModel: BillViewModel,
+    chartData: ChartData,
+    context: android.content.Context
+) {
+    val budgets = remember { BudgetPrefs.getAll(context) }
+    if (budgets.isEmpty()) return
+    val spentByCategory = chartData.categoryBreakdown.toMap()
+
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = CatBase)
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text("Category Budgets", style = MaterialTheme.typography.titleMedium, color = CatText)
+            Text(
+                "Current-month spending against your caps",
+                style = MaterialTheme.typography.labelMedium,
+                color = CatSubtext0
+            )
+            Spacer(Modifier.height(14.dp))
+            budgets.toSortedMap(compareBy { it.ordinal }).forEach { (category, budget) ->
+                val limit = viewModel.convertToDisplay(budget.amount, budget.currency)
+                val spent = spentByCategory[category] ?: 0.0
+                val progress = BudgetMath.progress(spent, limit) ?: return@forEach
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    BudgetRing(progress.ratio, modifier = Modifier.size(56.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(category.label, color = CatText, fontWeight = FontWeight.Medium)
+                        Text(
+                            "${CurrencyFormatter.format(progress.spent, chartData.currency)} of ${CurrencyFormatter.format(progress.limit, chartData.currency)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (progress.spent > progress.limit) CatRed else CatSubtext0
+                        )
+                    }
+                    Text(
+                        if (progress.spent > progress.limit) "Over" else "${CurrencyFormatter.format(progress.remaining, chartData.currency)} left",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (progress.spent > progress.limit) CatRed else CatGreen
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BudgetRing(progress: Float, modifier: Modifier = Modifier) {
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            drawArc(
+                color = CatSurface1,
+                startAngle = -90f,
+                sweepAngle = 360f,
+                useCenter = false,
+                style = Stroke(width = 7f)
+            )
+            drawArc(
+                color = if (progress >= 1f) CatRed else CatMauve,
+                startAngle = -90f,
+                sweepAngle = 360f * progress,
+                useCenter = false,
+                style = Stroke(width = 7f)
+            )
+        }
+        Text("${(progress * 100).toInt()}%", style = MaterialTheme.typography.labelSmall, color = CatText)
     }
 }
 

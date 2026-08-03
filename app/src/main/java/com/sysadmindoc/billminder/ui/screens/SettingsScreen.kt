@@ -25,6 +25,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.sysadmindoc.billminder.data.BillCategory
+import com.sysadmindoc.billminder.data.BudgetPrefs
 import com.sysadmindoc.billminder.data.CurrencyCatalog
 import com.sysadmindoc.billminder.data.CurrencyConverter
 import com.sysadmindoc.billminder.notification.ReminderPrefs
@@ -45,6 +47,7 @@ fun SettingsScreen(
     val displayCurrency by viewModel.displayCurrency.collectAsState()
     var showCurrencyMenu by remember { mutableStateOf(false) }
     var showFxRates by remember { mutableStateOf(false) }
+    var showBudgetDialog by remember { mutableStateOf(false) }
     var fullScreenReminders by remember { mutableStateOf(ReminderPrefs.isFullScreenEnabled(context)) }
     var showGeofenceDialog by remember { mutableStateOf(false) }
     var homeGeofenceEnabled by remember { mutableStateOf(GeofencePrefs.get(context)?.enabled == true) }
@@ -348,6 +351,37 @@ fun SettingsScreen(
                 manualRates = viewModel.getManualRates(),
                 onSaveRate = viewModel::setManualRate,
                 onDismiss = { showFxRates = false }
+            )
+        }
+
+        SettingsRow(
+            icon = Icons.Filled.PieChart,
+            title = "Category Budgets",
+            subtitle = "${BudgetPrefs.getAll(context).size} monthly caps configured in $displayCurrency"
+        ) {
+            showBudgetDialog = true
+        }
+
+        if (showBudgetDialog) {
+            val existingBudgets = BudgetPrefs.getAll(context)
+            CategoryBudgetsDialog(
+                displayCurrency = displayCurrency,
+                initialValues = existingBudgets.mapValues { (_, budget) ->
+                    "%.2f".format(viewModel.convertToDisplay(budget.amount, budget.currency))
+                },
+                onSave = { values ->
+                    BillCategory.entries.forEach { category ->
+                        BudgetPrefs.setBudget(
+                            context,
+                            category,
+                            values[category]?.toDoubleOrNull(),
+                            displayCurrency
+                        )
+                    }
+                    showBudgetDialog = false
+                    Toast.makeText(context, "Category budgets saved", Toast.LENGTH_SHORT).show()
+                },
+                onDismiss = { showBudgetDialog = false }
             )
         }
 
@@ -744,6 +778,64 @@ private fun HomeGeofenceDialog(
                 TextButton(onClick = onDismiss) {
                     Text("Cancel", color = CatSubtext0)
                 }
+            }
+        }
+    )
+}
+
+@Composable
+private fun CategoryBudgetsDialog(
+    displayCurrency: String,
+    initialValues: Map<BillCategory, String>,
+    onSave: (Map<BillCategory, String>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val values = remember {
+        mutableStateMapOf<BillCategory, String>().apply {
+            BillCategory.entries.forEach { category ->
+                put(category, initialValues[category] ?: "")
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CatSurface0,
+        title = { Text("Category Budgets", color = CatText) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    "Set a monthly cap for each category. Leave a field blank to remove its cap.",
+                    color = CatSubtext0,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                BillCategory.entries.forEach { category ->
+                    OutlinedTextField(
+                        value = values[category].orEmpty(),
+                        onValueChange = { input ->
+                            values[category] = input.filter { it.isDigit() || it == '.' }
+                        },
+                        label = { Text(category.label) },
+                        suffix = { Text(displayCurrency, color = CatSubtext0) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = settingsFieldColors()
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(values.toMap()) }) {
+                Text("Save", color = CatBlue)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = CatSubtext0)
             }
         }
     )
