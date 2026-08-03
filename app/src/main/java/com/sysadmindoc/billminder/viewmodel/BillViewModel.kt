@@ -64,6 +64,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
     // Undo delete state
     private val _lastDeletedBill = MutableStateFlow<Bill?>(null)
     val lastDeletedBill: StateFlow<Bill?> = _lastDeletedBill
+    private var lastDeletedPayees: List<PayeeDraft> = emptyList()
 
     // Snackbar events
     private val _snackbarMessage = MutableSharedFlow<String>()
@@ -217,7 +218,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
 
     fun getPaymentsForBill(billId: Long): Flow<List<Payment>> = repo.getPaymentsForBill(billId)
 
-    fun saveBill(bill: Bill) {
+    fun saveBill(bill: Bill, payees: List<PayeeDraft>? = null) {
         viewModelScope.launch {
             val id = if (bill.id == 0L) {
                 repo.insertBill(bill)
@@ -226,6 +227,9 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
                 bill.id
             }
             val saved = repo.getBillById(id) ?: return@launch
+            if (payees != null) {
+                repo.replacePayees(saved.id, payees)
+            }
             if (saved.isEnabled) {
                 ReminderScheduler.scheduleReminder(getApplication(), saved)
             } else {
@@ -237,6 +241,8 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteBill(bill: Bill) {
         viewModelScope.launch {
             ReminderScheduler.cancelReminder(getApplication(), bill.id)
+            lastDeletedPayees = repo.getPayeesForBill(bill.id).map { PayeeDraft(it.name, it.sharePercent) }
+            repo.deletePayeesForBill(bill.id)
             repo.deleteBill(bill)
             _lastDeletedBill.value = bill
             _snackbarMessage.emit("${bill.name} deleted")
@@ -248,22 +254,26 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val restored = bill.copy(id = 0)
             val id = repo.insertBill(restored)
+            repo.replacePayees(id, lastDeletedPayees)
             val saved = repo.getBillById(id) ?: return@launch
             if (saved.isEnabled) {
                 ReminderScheduler.scheduleReminder(getApplication(), saved)
             }
             _lastDeletedBill.value = null
+            lastDeletedPayees = emptyList()
         }
     }
 
     fun duplicateBill(bill: Bill) {
         viewModelScope.launch {
+            val sourcePayees = repo.getPayeesForBill(bill.id)
             val copy = bill.copy(
                 id = 0,
                 name = "${bill.name} (Copy)",
                 createdAt = System.currentTimeMillis()
             )
             val id = repo.insertBill(copy)
+            repo.replacePayees(id, sourcePayees.map { PayeeDraft(it.name, it.sharePercent) })
             val saved = repo.getBillById(id) ?: return@launch
             if (saved.isEnabled) {
                 ReminderScheduler.scheduleReminder(getApplication(), saved)
@@ -271,6 +281,8 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
             _snackbarMessage.emit("${bill.name} duplicated")
         }
     }
+
+    suspend fun getPayeesForBill(billId: Long): List<BillPayee> = repo.getPayeesForBill(billId)
 
     fun markAsPaid(bill: Bill, customAmount: Double? = null, confirmationNumber: String = "") {
         viewModelScope.launch {

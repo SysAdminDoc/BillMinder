@@ -8,7 +8,7 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Bill::class, Payment::class], version = 3, exportSchema = false)
+@Database(entities = [Bill::class, Payment::class, BillPayee::class], version = 4, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class BillDatabase : RoomDatabase() {
     abstract fun billDao(): BillDao
@@ -33,6 +33,19 @@ abstract class BillDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS bill_payees " +
+                        "(id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "billId INTEGER NOT NULL, name TEXT NOT NULL, " +
+                        "sharePercent REAL NOT NULL, " +
+                        "FOREIGN KEY(billId) REFERENCES bills(id) ON UPDATE NO ACTION ON DELETE CASCADE)"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_bill_payees_billId ON bill_payees(billId)")
+            }
+        }
+
         fun getDatabase(context: Context): BillDatabase {
             return INSTANCE ?: synchronized(this) {
                 Room.databaseBuilder(
@@ -40,7 +53,7 @@ abstract class BillDatabase : RoomDatabase() {
                     BillDatabase::class.java,
                     "billminder.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .fallbackToDestructiveMigration()
                     .build()
                     .also { INSTANCE = it }

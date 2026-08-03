@@ -84,6 +84,16 @@ interface BillDao {
     // Count total bills
     @Query("SELECT COUNT(*) FROM bills WHERE isEnabled = 1")
     suspend fun getActiveBillCount(): Int
+
+    // Payee splits
+    @Query("SELECT * FROM bill_payees WHERE billId = :billId ORDER BY id ASC")
+    suspend fun getPayeesForBill(billId: Long): List<BillPayee>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPayees(payees: List<BillPayee>)
+
+    @Query("DELETE FROM bill_payees WHERE billId = :billId")
+    suspend fun deletePayeesForBill(billId: Long)
 }
 
 data class CategorySpending(

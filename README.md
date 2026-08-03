@@ -17,6 +17,7 @@ A bill tracking and reminder app for Android. Never miss a payment again.
 - **Quick Mark Paid** - One-tap from home screen or notification
 - **Swipe-to-Delete** - Swipe left on any bill to delete
 - **Variable Amounts** - Track expected, minimum, and maximum amounts for utilities
+- **Split Bills** - Assign one bill across multiple payees with percentage share math
 
 ### Reminders (Alarm-Style)
 - **Exact Alarms** - Uses AlarmManager.setAlarmClock() for reliable delivery (same as alarm clock apps)

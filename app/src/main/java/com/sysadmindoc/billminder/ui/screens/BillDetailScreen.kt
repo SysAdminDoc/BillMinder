@@ -21,7 +21,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sysadmindoc.billminder.data.Bill
+import com.sysadmindoc.billminder.data.BillPayee
 import com.sysadmindoc.billminder.data.HolidayCalendar
+import com.sysadmindoc.billminder.data.PayeeMath
 import com.sysadmindoc.billminder.data.Payment
 import com.sysadmindoc.billminder.notification.ReminderScheduler
 import com.sysadmindoc.billminder.ui.components.getCategoryIcon
@@ -42,6 +44,7 @@ fun BillDetailScreen(
     var bill by remember { mutableStateOf<Bill?>(null) }
     var lifetimeSpending by remember { mutableDoubleStateOf(0.0) }
     var onTimeStreak by remember { mutableIntStateOf(0) }
+    var payees by remember { mutableStateOf<List<BillPayee>>(emptyList()) }
     val payments by viewModel.getPaymentsForBill(billId).collectAsState(initial = emptyList())
     val dateFormat = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
     val dateTimeFormat = SimpleDateFormat("MMM d, yyyy 'at' h:mm a", Locale.getDefault())
@@ -49,6 +52,7 @@ fun BillDetailScreen(
 
     LaunchedEffect(billId) {
         bill = viewModel.getBillById(billId)
+        payees = viewModel.getPayeesForBill(billId)
         lifetimeSpending = viewModel.getLifetimeSpending(billId)
         onTimeStreak = viewModel.getOnTimeStreak(billId)
     }
@@ -236,6 +240,24 @@ fun BillDetailScreen(
                         }
                         if (currentBill.isVariableAmount && currentBill.amountMin != null && currentBill.amountMax != null) {
                             DetailRow("Amount Range", "$${"%,.2f".format(currentBill.amountMin)} - $${"%,.2f".format(currentBill.amountMax)}")
+                        }
+                        if (payees.isNotEmpty()) {
+                            Spacer(Modifier.height(12.dp))
+                            Text("Split", style = MaterialTheme.typography.labelLarge, color = CatSubtext0)
+                            Spacer(Modifier.height(4.dp))
+                            payees.forEach { payee ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(payee.name, color = CatText, style = MaterialTheme.typography.bodyMedium)
+                                    Text(
+                                        "${"%.1f".format(payee.sharePercent)}%  $${"%,.2f".format(PayeeMath.shareAmount(currentBill.amount, payee.sharePercent))}",
+                                        color = CatSubtext0,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            }
                         }
                         DetailRow("Auto-Pay", if (currentBill.isAutoPay) "Yes" else "No")
                         DetailRow("Reminders", if (currentBill.isEnabled) "Enabled" else "Disabled")

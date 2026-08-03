@@ -69,6 +69,19 @@ class BillRepository(private val dao: BillDao) {
 
     suspend fun getActiveBillCount(): Int = dao.getActiveBillCount()
 
+    suspend fun getPayeesForBill(billId: Long): List<BillPayee> = dao.getPayeesForBill(billId)
+
+    suspend fun replacePayees(billId: Long, payees: List<PayeeDraft>) {
+        dao.deletePayeesForBill(billId)
+        if (payees.isNotEmpty()) {
+            dao.insertPayees(payees.map {
+                BillPayee(billId = billId, name = it.name, sharePercent = it.sharePercent)
+            })
+        }
+    }
+
+    suspend fun deletePayeesForBill(billId: Long) = dao.deletePayeesForBill(billId)
+
     private fun getMonthRange(year: Int, month: Int): Pair<Long, Long> {
         val start = Calendar.getInstance().apply {
             set(year, month, 1, 0, 0, 0)

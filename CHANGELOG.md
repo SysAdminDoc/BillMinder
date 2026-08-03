@@ -7,6 +7,7 @@ All notable changes to BillMinder will be documented in this file.
 - Added variable-amount bill ranges, observed-holiday reminder scheduling, dismissal-based reminder escalation, forecast and what-if planning, year-end CSV reports, and next-3/month-total widgets.
 - Added salted PIN fallback, configurable auto-lock, screenshot protection, and an optional duress PIN decoy view.
 - Hardened CSV quoting, backup restore ID remapping, and added JVM coverage for amount validation and holiday handling.
+- Added split bills with Room-backed payees, percentage validation, share calculations, and undo/duplicate preservation.
 
 ## [v2.1.1] - 2026-04-29
 

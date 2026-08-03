@@ -51,6 +51,9 @@ fun AddEditBillScreen(
     var amountMin by remember { mutableStateOf("") }
     var amountMax by remember { mutableStateOf("") }
     var amountRangeError by remember { mutableStateOf<String?>(null) }
+    var isSplitBill by remember { mutableStateOf(false) }
+    var splitError by remember { mutableStateOf<String?>(null) }
+    val payees = remember { mutableStateListOf<PayeeDraft>() }
     var selectedColor by remember { mutableLongStateOf(0xFF89B4FA) }
     var isLoaded by remember { mutableStateOf(billId == null) }
 
@@ -76,6 +79,9 @@ fun AddEditBillScreen(
             isVariableAmount = bill.isVariableAmount
             amountMin = bill.amountMin?.toBigDecimal()?.stripTrailingZeros()?.toPlainString() ?: ""
             amountMax = bill.amountMax?.toBigDecimal()?.stripTrailingZeros()?.toPlainString() ?: ""
+            payees.clear()
+            payees.addAll(viewModel.getPayeesForBill(bill.id).map { PayeeDraft(it.name, it.sharePercent) })
+            isSplitBill = payees.isNotEmpty()
             selectedColor = bill.color
             isLoaded = true
         }
@@ -226,6 +232,98 @@ fun AddEditBillScreen(
                         color = CatRed,
                         style = MaterialTheme.typography.bodySmall
                     )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Split Bill", color = CatText, style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Assign the bill across payees by percentage",
+                        color = CatSubtext0,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Switch(
+                    checked = isSplitBill,
+                    onCheckedChange = {
+                        isSplitBill = it
+                        splitError = null
+                        if (it && payees.isEmpty()) payees.add(PayeeDraft("", 100.0))
+                    },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = CatCrust, checkedTrackColor = CatBlue,
+                        uncheckedThumbColor = CatOverlay0, uncheckedTrackColor = CatSurface1
+                    )
+                )
+            }
+
+            if (isSplitBill) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    payees.forEachIndexed { index, payee ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = payee.name,
+                                onValueChange = { value ->
+                                    payees[index] = payee.copy(name = value)
+                                    splitError = null
+                                },
+                                label = { Text("Payee") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1.4f),
+                                colors = billFieldColors()
+                            )
+                            OutlinedTextField(
+                                value = if (payee.sharePercent == 0.0) "" else payee.sharePercent.toBigDecimal().stripTrailingZeros().toPlainString(),
+                                onValueChange = { value ->
+                                    if (value.matches(Regex("^\\d{0,3}(\\.\\d{0,2})?$"))) {
+                                        payees[index] = payee.copy(sharePercent = value.toDoubleOrNull() ?: 0.0)
+                                        splitError = null
+                                    }
+                                },
+                                label = { Text("Share %") },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                modifier = Modifier.weight(0.8f),
+                                colors = billFieldColors()
+                            )
+                            IconButton(onClick = {
+                                payees.removeAt(index)
+                                splitError = null
+                            }) {
+                                Icon(Icons.Filled.Close, contentDescription = "Remove payee", tint = CatRed)
+                            }
+                        }
+                        if (amount.toDoubleOrNull() != null) {
+                            Text(
+                                "${payee.name.ifBlank { "Payee ${index + 1}" }}: $${"%,.2f".format(PayeeMath.shareAmount(amount.toDouble(), payee.sharePercent))}",
+                                color = CatSubtext0,
+                                style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier.padding(start = 4.dp)
+                            )
+                        }
+                    }
+                    TextButton(onClick = { payees.add(PayeeDraft("", 0.0)) }) {
+                        Icon(Icons.Filled.Add, contentDescription = null)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Add payee", color = CatBlue)
+                    }
+                    Text(
+                        "Total share: ${"%.2f".format(PayeeMath.totalPercent(payees))}%",
+                        color = if (PayeeMath.isBalanced(payees)) CatGreen else CatYellow,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                    splitError?.let {
+                        Text(it, color = CatRed, style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
 
@@ -474,6 +572,23 @@ fun AddEditBillScreen(
                         }
                         amountRangeError = null
                     }
+                    if (isSplitBill) {
+                        when {
+                            payees.any { it.name.isBlank() } -> {
+                                splitError = "Enter a name for every payee"
+                                return@Button
+                            }
+                            payees.any { it.sharePercent <= 0.0 } -> {
+                                splitError = "Each payee must have a positive share"
+                                return@Button
+                            }
+                            !PayeeMath.isBalanced(payees) -> {
+                                splitError = "Payee shares must total 100%"
+                                return@Button
+                            }
+                            else -> splitError = null
+                        }
+                    }
 
                     val bill = Bill(
                         id = if (isEditing) billId!! else 0,
@@ -496,7 +611,7 @@ fun AddEditBillScreen(
                         amountMin = parsedMin,
                         amountMax = parsedMax
                     )
-                    viewModel.saveBill(bill)
+                    viewModel.saveBill(bill, if (isSplitBill) payees.toList() else emptyList())
                     onNavigateBack()
                 },
                 modifier = Modifier.fillMaxWidth().height(52.dp),
