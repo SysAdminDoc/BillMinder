@@ -511,6 +511,19 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun exportInterchange(uri: Uri, format: InterchangeFormat) {
+        viewModelScope.launch {
+            BackupManager.exportInterchangeCsv(
+                context = getApplication(),
+                uri = uri,
+                repo = repo,
+                format = format,
+                targetCurrency = _displayCurrency.value,
+                manualRates = CurrencyPrefs.getManualRates(getApplication())
+            )
+        }
+    }
+
     fun exportYearEndCsv(uri: Uri, year: Int) {
         viewModelScope.launch {
             BackupManager.exportYearEndCsv(getApplication(), uri, repo, year)

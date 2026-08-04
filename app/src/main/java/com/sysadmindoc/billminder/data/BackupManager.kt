@@ -230,6 +230,28 @@ object BackupManager {
         }
     }
 
+    suspend fun exportInterchangeCsv(
+        context: Context,
+        uri: Uri,
+        repo: BillRepository,
+        format: InterchangeFormat,
+        targetCurrency: String,
+        manualRates: Map<String, Double>
+    ) {
+        val csv = InterchangeExporter.export(
+            format = format,
+            bills = repo.getAllBillsForExport(),
+            payments = repo.getAllPaymentsForExport(),
+            targetCurrency = targetCurrency,
+            convert = { amount, from, to ->
+                CurrencyConverter.convert(amount, from, to, manualRates)
+            }
+        )
+        context.contentResolver.openOutputStream(uri)?.use { out ->
+            out.write(csv.toByteArray(Charsets.UTF_8))
+        }
+    }
+
     private fun formatMoney(value: Double): String =
         String.format(java.util.Locale.US, "%.2f", value)
 

@@ -18,6 +18,7 @@ All notable changes to BillMinder will be documented in this file.
 - Added persisted per-category monthly budgets with selected-currency progress rings and over-limit states.
 - Added a CSV import wizard with header suggestions, quoted-field parsing, bill/payment mapping, and skipped-row reporting.
 - Added Mint, Tiller, and Empower migration presets that turn transaction exports into one-time paid bills.
+- Added deterministic Bluecoins, YNAB, and Actual Budget CSV exports with target-currency conversion where required.
 
 ## [v2.1.1] - 2026-04-29
 

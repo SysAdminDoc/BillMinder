@@ -63,6 +63,7 @@ A bill tracking and reminder app for Android. Never miss a payment again.
 - **Migration Presets** - One-step column mappings for Mint, Tiller, and Empower transaction exports
 - **Year-End Export** - Tax-ready CSV grouped by category
 - **Currency-Aware Exports** - JSON and CSV preserve bill/payment currency codes
+- **Interchange Exports** - Generate Bluecoins advanced CSV, YNAB outflow/inflow CSV, or Actual Budget transaction CSV
 - **Room Database** - SQLite with migration support
 
 ### Security

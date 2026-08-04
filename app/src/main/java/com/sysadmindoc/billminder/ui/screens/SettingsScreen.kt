@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -35,6 +36,7 @@ import com.sysadmindoc.billminder.data.CsvImport
 import com.sysadmindoc.billminder.data.CsvImportMapping
 import com.sysadmindoc.billminder.data.CsvMigrationPreset
 import com.sysadmindoc.billminder.data.CsvTable
+import com.sysadmindoc.billminder.data.InterchangeFormat
 import com.sysadmindoc.billminder.notification.ReminderPrefs
 import com.sysadmindoc.billminder.notification.GeofenceManager
 import com.sysadmindoc.billminder.notification.GeofencePrefs
@@ -57,6 +59,8 @@ fun SettingsScreen(
     var csvUri by remember { mutableStateOf<Uri?>(null) }
     var csvTable by remember { mutableStateOf<CsvTable?>(null) }
     var showCsvMapping by remember { mutableStateOf(false) }
+    var showInterchangeDialog by remember { mutableStateOf(false) }
+    var pendingInterchangeFormat by remember { mutableStateOf<InterchangeFormat?>(null) }
     var fullScreenReminders by remember { mutableStateOf(ReminderPrefs.isFullScreenEnabled(context)) }
     var showGeofenceDialog by remember { mutableStateOf(false) }
     var homeGeofenceEnabled by remember { mutableStateOf(GeofencePrefs.get(context)?.enabled == true) }
@@ -126,6 +130,17 @@ fun SettingsScreen(
         uri?.let {
             viewModel.exportCsv(it)
             Toast.makeText(context, "CSV exported", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val interchangeExportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
+        val format = pendingInterchangeFormat
+        pendingInterchangeFormat = null
+        if (uri != null && format != null) {
+            viewModel.exportInterchange(uri, format)
+            Toast.makeText(context, "${format.label} CSV exported", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -435,6 +450,25 @@ fun SettingsScreen(
             subtitle = "Export payment history as spreadsheet"
         ) {
             exportCsvLauncher.launch("billminder_payments.csv")
+        }
+
+        SettingsRow(
+            icon = Icons.Filled.SwapHoriz,
+            title = "Export for Another App",
+            subtitle = "Bluecoins, YNAB, or Actual Budget CSV"
+        ) {
+            showInterchangeDialog = true
+        }
+
+        if (showInterchangeDialog) {
+            InterchangeExportDialog(
+                onExport = { format ->
+                    pendingInterchangeFormat = format
+                    showInterchangeDialog = false
+                    interchangeExportLauncher.launch(format.fileName)
+                },
+                onDismiss = { showInterchangeDialog = false }
+            )
         }
 
         SettingsRow(
@@ -892,6 +926,58 @@ private fun CategoryBudgetsDialog(
         confirmButton = {
             TextButton(onClick = { onSave(values.toMap()) }) {
                 Text("Save", color = CatBlue)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = CatSubtext0)
+            }
+        }
+    )
+}
+
+@Composable
+private fun InterchangeExportDialog(
+    onExport: (InterchangeFormat) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var selected by remember { mutableStateOf(InterchangeFormat.BLUECOINS) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CatSurface0,
+        title = { Text("Export for Another App", color = CatText) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    "YNAB and Actual amounts use the selected display currency. Bluecoins keeps each payment's native currency.",
+                    color = CatSubtext0,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Spacer(Modifier.height(6.dp))
+                InterchangeFormat.entries.forEach { format ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selected = format },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = selected == format,
+                            onClick = { selected = format },
+                            colors = RadioButtonDefaults.colors(selectedColor = CatBlue)
+                        )
+                        Column {
+                            Text(format.label, color = CatText, fontWeight = FontWeight.Medium)
+                            Text(format.description, color = CatSubtext0, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onExport(selected) }) {
+                Text("Export", color = CatBlue)
             }
         },
         dismissButton = {
