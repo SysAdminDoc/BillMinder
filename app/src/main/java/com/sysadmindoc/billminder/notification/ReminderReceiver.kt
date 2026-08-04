@@ -67,6 +67,10 @@ class ReminderReceiver : BroadcastReceiver() {
 
         CoroutineScope(Dispatchers.IO).launch {
             val bill = repo.getBillById(billId) ?: return@launch
+            if (ReminderPrefs.isVacationMode(context) && bill.isAutoPay) {
+                ReminderScheduler.scheduleReminder(context, bill)
+                return@launch
+            }
             val nextDue = ReminderScheduler.getNextDueDate(bill)
             if (repo.getPaymentForBillDue(billId, nextDue) == null) {
                 repo.insertPayment(

@@ -63,6 +63,7 @@ fun SettingsScreen(
     var showInterchangeDialog by remember { mutableStateOf(false) }
     var pendingInterchangeFormat by remember { mutableStateOf<InterchangeFormat?>(null) }
     var fullScreenReminders by remember { mutableStateOf(ReminderPrefs.isFullScreenEnabled(context)) }
+    var vacationMode by remember { mutableStateOf(ReminderPrefs.isVacationMode(context)) }
     var showGeofenceDialog by remember { mutableStateOf(false) }
     var homeGeofenceEnabled by remember { mutableStateOf(GeofencePrefs.get(context)?.enabled == true) }
     var smsCandidates by remember { mutableStateOf<List<SmsBillCandidate>>(emptyList()) }
@@ -202,6 +203,16 @@ fun SettingsScreen(
             onCheckedChange = { enabled ->
                 fullScreenReminders = enabled
                 ReminderPrefs.setFullScreenEnabled(context, enabled)
+            }
+        )
+        SettingsToggle(
+            icon = Icons.Filled.EventBusy,
+            title = "Vacation Mode",
+            subtitle = "Pause reminders for auto-pay bills; manual bills stay active",
+            checked = vacationMode,
+            onCheckedChange = { enabled ->
+                vacationMode = enabled
+                viewModel.setVacationMode(enabled)
             }
         )
 

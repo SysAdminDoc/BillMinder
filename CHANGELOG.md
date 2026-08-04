@@ -23,6 +23,7 @@ All notable changes to BillMinder will be documented in this file.
 - Added a keyguard-capable compact widget that keeps payment amounts off the lock screen.
 - Verified the release R8 minification and resource-shrinking task without invoking signing.
 - Added an opt-in local SMS scanner with deterministic amount/date parsing and review-before-import proposals.
+- Added Vacation Mode to pause auto-pay reminders while preserving manual-payment reminders.
 
 ## [v2.1.1] - 2026-04-29
 

@@ -33,6 +33,7 @@ A bill tracking and reminder app for Android. Never miss a payment again.
 - **Cascading Reminders** - Dismissed reminders escalate at 4 hours, 24 hours, and overdue
 - **Full-Screen Alarm Option** - Opt-in alarm-style due screen with mark-paid, snooze, and dismiss actions
 - **Home Geofence** - Opt-in enter-and-dwell reminders around a configurable home radius
+- **Vacation Mode** - Pause reminders for auto-pay bills while keeping manual-payment reminders active
 - **Calendar Handoff** - Add the next due date as an optional all-day event, including recurrence, to the user's calendar app
 
 ### Dashboard

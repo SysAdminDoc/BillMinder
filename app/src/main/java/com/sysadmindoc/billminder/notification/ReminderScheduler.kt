@@ -15,6 +15,8 @@ object ReminderScheduler {
     fun scheduleReminder(context: Context, bill: Bill) {
         cancelReminder(context, bill.id)
 
+        if (ReminderPrefs.isVacationMode(context) && bill.isAutoPay) return
+
         var scheduledDueDate = getNextDueDate(bill)
         var reminderTime = getReminderTime(scheduledDueDate, bill.reminderTiming.days)
 

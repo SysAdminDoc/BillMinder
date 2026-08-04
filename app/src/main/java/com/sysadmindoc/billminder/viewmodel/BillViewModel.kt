@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.sysadmindoc.billminder.data.*
 import com.sysadmindoc.billminder.notification.ReminderScheduler
+import com.sysadmindoc.billminder.notification.ReminderPrefs
 import com.sysadmindoc.billminder.security.EncryptedAttachment
 import com.sysadmindoc.billminder.security.EncryptedAttachmentStore
 import com.sysadmindoc.billminder.wear.WearSync
@@ -320,6 +321,13 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun getManualRates(): Map<String, Double> = CurrencyPrefs.getManualRates(getApplication())
+
+    fun setVacationMode(enabled: Boolean) {
+        ReminderPrefs.setVacationMode(getApplication(), enabled)
+        viewModelScope.launch {
+            ReminderScheduler.scheduleAllReminders(getApplication(), repo.getAllBillsList())
+        }
+    }
 
     fun convertToDisplay(amount: Double, currency: String): Double =
         CurrencyConverter.convert(
