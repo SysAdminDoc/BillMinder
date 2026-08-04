@@ -2,7 +2,7 @@
 
 All notable changes to BillMinder will be documented in this file.
 
-## [Unreleased]
+## [v2.2.0] - 2026-08-03
 
 - Added variable-amount bill ranges, observed-holiday reminder scheduling, dismissal-based reminder escalation, forecast and what-if planning, year-end CSV reports, and next-3/month-total widgets.
 - Added salted PIN fallback, configurable auto-lock, screenshot protection, and an optional duress PIN decoy view.
