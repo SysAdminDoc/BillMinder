@@ -1,9 +1,0 @@
-R_DEF: Internal format may change without notice
-local
-drawable ic_tile
-drawable tile_preview
-string app_name
-string tile_description
-string tile_label
-style Theme.BillMinderWear
-style Theme.BillMinderWear.Transparent

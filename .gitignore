@@ -9,6 +9,7 @@
 .cxx
 local.properties
 /app/build
+/wear/build/
 *.apk
 CLAUDE.md
 billminder.jks
