@@ -7,6 +7,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -17,23 +19,30 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.sysadmindoc.billminder.data.Bill
 import com.sysadmindoc.billminder.data.CurrencyCatalog
+import com.sysadmindoc.billminder.data.ReceiptOcr
 import com.sysadmindoc.billminder.security.EncryptedAttachment
 import com.sysadmindoc.billminder.security.EncryptedAttachmentStore
 import com.sysadmindoc.billminder.ui.theme.*
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @Composable
 fun MarkPaidDialog(
     bill: Bill,
     onDismiss: () -> Unit,
-    onConfirm: (amount: Double, confirmationNumber: String, attachment: EncryptedAttachment?) -> Unit
+    onConfirm: (amount: Double, confirmationNumber: String, paidAt: Long, attachment: EncryptedAttachment?) -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var amount by remember { mutableStateOf(bill.amount.toBigDecimal().stripTrailingZeros().toPlainString()) }
     var confirmationNumber by remember { mutableStateOf("") }
+    var paidDate by remember { mutableStateOf(LocalDate.now().format(PAYMENT_DATE_FORMAT)) }
     var attachment by remember { mutableStateOf<EncryptedAttachment?>(null) }
     var isImporting by remember { mutableStateOf(false) }
+    var ocrMessage by remember { mutableStateOf<String?>(null) }
     var handedOff by remember { mutableStateOf(false) }
     val currentAttachment by rememberUpdatedState(attachment)
 
@@ -43,8 +52,39 @@ fun MarkPaidDialog(
         if (uri != null) {
             scope.launch {
                 isImporting = true
-                attachment?.let { EncryptedAttachmentStore.delete(context, it.fileName) }
-                attachment = EncryptedAttachmentStore.importUri(context, uri)
+                val imported = EncryptedAttachmentStore.importUri(context, uri)
+                if (imported != null) {
+                    attachment?.let { EncryptedAttachmentStore.delete(context, it.fileName) }
+                    attachment = imported
+                    ocrMessage = null
+                    if (imported.mimeType.startsWith("image/") || imported.mimeType == "application/pdf") {
+                        val cached = EncryptedAttachmentStore.decryptToCache(context, imported.fileName)
+                        if (cached != null) {
+                            val result = runCatching {
+                                ReceiptOcr.extract(context, cached, imported.mimeType)
+                            }.getOrNull()
+                            cached.delete()
+                            if (result != null) {
+                                result.amount?.let { amount = String.format(Locale.US, "%.2f", it) }
+                                result.date?.let { paidDate = it.format(PAYMENT_DATE_FORMAT) }
+                                ocrMessage = when {
+                                    result.amount != null && result.date != null -> "Amount and date found on device"
+                                    result.amount != null -> "Amount found on device"
+                                    result.date != null -> "Date found on device"
+                                    else -> "No amount or date found; review the receipt"
+                                }
+                            } else {
+                                ocrMessage = "Receipt text could not be read; review the fields"
+                            }
+                        } else {
+                            ocrMessage = "Receipt could not be prepared for text reading"
+                        }
+                    } else {
+                        ocrMessage = "OCR supports receipt images and PDFs"
+                    }
+                } else {
+                    ocrMessage = "Receipt could not be imported"
+                }
                 isImporting = false
             }
         }
@@ -98,6 +138,23 @@ fun MarkPaidDialog(
                         cursorColor = CatBlue
                     )
                 )
+                OutlinedTextField(
+                    value = paidDate,
+                    onValueChange = { paidDate = it.take(10) },
+                    label = { Text("Payment Date (MM/dd/yyyy)") },
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Filled.CalendarMonth, contentDescription = null, tint = CatSubtext0) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = CatText,
+                        unfocusedTextColor = CatText,
+                        focusedBorderColor = CatBlue,
+                        unfocusedBorderColor = CatSurface1,
+                        focusedLabelColor = CatBlue,
+                        unfocusedLabelColor = CatSubtext0,
+                        cursorColor = CatBlue
+                    )
+                )
                 OutlinedButton(
                     onClick = { attachmentPicker.launch("*/*") },
                     enabled = !isImporting,
@@ -107,7 +164,7 @@ fun MarkPaidDialog(
                     Spacer(Modifier.width(8.dp))
                     Text(
                         when {
-                            isImporting -> "Encrypting receipt..."
+                            isImporting -> "Encrypting and reading receipt..."
                             attachment != null -> "Receipt attached"
                             else -> "Attach receipt (image or PDF)"
                         }
@@ -129,14 +186,30 @@ fun MarkPaidDialog(
                         }
                     }
                 }
+                ocrMessage?.let { message ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = CatMauve, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(message, color = CatSubtext0, style = MaterialTheme.typography.labelMedium)
+                    }
+                }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
                     val parsed = amount.toDoubleOrNull() ?: bill.amount
+                    val parsedDate = runCatching {
+                        LocalDate.parse(paidDate.trim(), PAYMENT_DATE_FORMAT)
+                    }.getOrElse { LocalDate.now() }
+                    val today = LocalDate.now()
+                    val paidAt = if (parsedDate == today) {
+                        System.currentTimeMillis()
+                    } else {
+                        parsedDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                    }
                     handedOff = true
-                    onConfirm(parsed, confirmationNumber.trim(), attachment)
+                    onConfirm(parsed, confirmationNumber.trim(), paidAt, attachment)
                 },
                 enabled = !isImporting,
                 colors = ButtonDefaults.buttonColors(containerColor = CatGreen, contentColor = CatCrust),
@@ -152,3 +225,6 @@ fun MarkPaidDialog(
         }
     )
 }
+
+private val PAYMENT_DATE_FORMAT: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("MM/dd/yyyy", Locale.US)

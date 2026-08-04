@@ -417,7 +417,8 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         bill: Bill,
         customAmount: Double? = null,
         confirmationNumber: String = "",
-        attachment: EncryptedAttachment? = null
+        attachment: EncryptedAttachment? = null,
+        paidAt: Long? = null
     ) {
         viewModelScope.launch {
             val nextDue = ReminderScheduler.getNextDueDate(bill)
@@ -427,6 +428,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
                     Payment(
                         billId = bill.id,
                         amount = customAmount ?: bill.amount,
+                        paidAt = paidAt ?: System.currentTimeMillis(),
                         dueDate = nextDue,
                         confirmationNumber = confirmationNumber,
                         attachmentName = attachment?.displayName.orEmpty(),
