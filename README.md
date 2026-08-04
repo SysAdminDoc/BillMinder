@@ -73,6 +73,8 @@ A bill tracking and reminder app for Android. Never miss a payment again.
 ### Widget
 - **Home Screen Widget** - Glance-based widget showing upcoming bills, amounts, and days until due
 - **Widget Variants** - Next 3 bills and current-month payment progress widgets
+- **Wear OS Tile** - Shows the next unpaid bill and sends a one-tap mark-paid action back to the phone through the Wear Data Layer
+- **Lock-Screen Widget** - Keyguard-capable compact due reminder that omits amounts for privacy
 
 ### UI/UX
 - **Bottom Navigation** - Home, Calendar, Stats, Settings tabs
@@ -86,6 +88,7 @@ A bill tracking and reminder app for Android. Never miss a payment again.
 - Room 2.6.1 with migrations
 - AlarmManager for exact alarm-style reminders
 - Glance 1.1.1 for home screen widget
+- Wear Tiles 1.6.2 + Google Play services Wearable Data Layer for the companion tile
 - AndroidX Biometric for fingerprint/face lock
 - Navigation Compose with bottom nav
 - Canvas-drawn pie chart and trend line (no chart libraries)

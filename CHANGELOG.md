@@ -19,6 +19,8 @@ All notable changes to BillMinder will be documented in this file.
 - Added a CSV import wizard with header suggestions, quoted-field parsing, bill/payment mapping, and skipped-row reporting.
 - Added Mint, Tiller, and Empower migration presets that turn transaction exports into one-time paid bills.
 - Added deterministic Bluecoins, YNAB, and Actual Budget CSV exports with target-currency conversion where required.
+- Added a Wear OS companion tile with Data Layer synchronization and one-tap mark-paid handoff.
+- Added a keyguard-capable compact widget that keeps payment amounts off the lock screen.
 
 ## [v2.1.1] - 2026-04-29
 

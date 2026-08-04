@@ -8,6 +8,8 @@ import com.sysadmindoc.billminder.data.*
 import com.sysadmindoc.billminder.notification.ReminderScheduler
 import com.sysadmindoc.billminder.security.EncryptedAttachment
 import com.sysadmindoc.billminder.security.EncryptedAttachmentStore
+import com.sysadmindoc.billminder.wear.WearSync
+import com.sysadmindoc.billminder.widget.WidgetUpdater
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
@@ -76,6 +78,11 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
     private val _lastDeletedBill = MutableStateFlow<Bill?>(null)
     val lastDeletedBill: StateFlow<Bill?> = _lastDeletedBill
     private var lastDeletedPayees: List<PayeeDraft> = emptyList()
+
+    private suspend fun refreshExternalSurfaces() {
+        WearSync.sync(getApplication())
+        WidgetUpdater.updateAll(getApplication())
+    }
 
     // Snackbar events
     private val _snackbarMessage = MutableSharedFlow<String>()
@@ -345,6 +352,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 ReminderScheduler.cancelReminder(getApplication(), saved.id)
             }
+            refreshExternalSurfaces()
         }
     }
 
@@ -355,6 +363,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
             repo.deletePayeesForBill(bill.id)
             repo.deleteBill(bill)
             _lastDeletedBill.value = bill
+            refreshExternalSurfaces()
             _snackbarMessage.emit("${bill.name} deleted")
         }
     }
@@ -371,6 +380,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
             }
             _lastDeletedBill.value = null
             lastDeletedPayees = emptyList()
+            refreshExternalSurfaces()
         }
     }
 
@@ -388,6 +398,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
             if (saved.isEnabled) {
                 ReminderScheduler.scheduleReminder(getApplication(), saved)
             }
+            refreshExternalSurfaces()
             _snackbarMessage.emit("${bill.name} duplicated")
         }
     }
@@ -422,6 +433,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
             val nm = getApplication<Application>().getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
             nm.cancel(bill.id.toInt())
             nm.cancel((bill.id + 20000).toInt())
+            refreshExternalSurfaces()
             loadChartData()
         }
     }
@@ -434,6 +446,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
                 EncryptedAttachmentStore.delete(getApplication(), it.attachmentFile)
                 repo.deletePayment(it)
             }
+            refreshExternalSurfaces()
             loadChartData()
         }
     }
@@ -468,6 +481,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
             val count = BackupManager.importJson(getApplication(), uri, repo)
             val bills = repo.getAllBillsList()
             ReminderScheduler.scheduleAllReminders(getApplication(), bills)
+            refreshExternalSurfaces()
             loadChartData()
             onComplete(count)
         }
@@ -497,6 +511,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
                     BackupManager.importCsv(getApplication(), uri, repo, mapping)
                 }
                 ReminderScheduler.scheduleAllReminders(getApplication(), repo.getAllBillsList())
+                refreshExternalSurfaces()
                 loadChartData()
                 onComplete(result, null)
             } catch (error: Exception) {

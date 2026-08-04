@@ -3,4 +3,5 @@
     <string name="app_name">BillMinder</string>
     <string name="widget_description">Shows the next 3 bills and amounts due</string>
     <string name="month_widget_description">Monthly bill total and payment progress</string>
+    <string name="lock_screen_widget_description">Private next-bill due reminder for the home screen or lock screen</string>
 </resources>

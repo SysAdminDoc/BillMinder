@@ -8,6 +8,8 @@ import android.content.Intent
 import com.sysadmindoc.billminder.data.BillDatabase
 import com.sysadmindoc.billminder.data.BillRepository
 import com.sysadmindoc.billminder.data.Payment
+import com.sysadmindoc.billminder.wear.WearSync
+import com.sysadmindoc.billminder.widget.WidgetUpdater
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -66,13 +68,22 @@ class ReminderReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             val bill = repo.getBillById(billId) ?: return@launch
             val nextDue = ReminderScheduler.getNextDueDate(bill)
-            repo.insertPayment(
-                Payment(billId = billId, amount = amount, dueDate = nextDue, currency = bill.currency)
-            )
+            if (repo.getPaymentForBillDue(billId, nextDue) == null) {
+                repo.insertPayment(
+                    Payment(
+                        billId = billId,
+                        amount = if (amount > 0.0) amount else bill.amount,
+                        dueDate = nextDue,
+                        currency = bill.currency
+                    )
+                )
+            }
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
             nm.cancel(billId.toInt())
             nm.cancel((billId + 20000).toInt())
             cancelCascade(context, billId)
+            WearSync.sync(context)
+            WidgetUpdater.updateAll(context)
         }
     }
 

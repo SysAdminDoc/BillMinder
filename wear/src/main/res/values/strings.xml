@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">BillMinder Wear</string>
+    <string name="tile_label">BillMinder</string>
+    <string name="tile_description">See the next bill and mark it paid</string>
+</resources>

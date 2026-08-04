@@ -22,6 +22,7 @@ CODEX_CHANGELOG.md
 AGENTS.md
 .claude/
 .codex/
+/.kotlin/
 .ai/
 PROJECT_CONTEXT.md
 CONTINUATION_PROMPT.md
