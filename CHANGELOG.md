@@ -25,6 +25,7 @@ All notable changes to BillMinder will be documented in this file.
 - Added an opt-in local SMS scanner with deterministic amount/date parsing and review-before-import proposals.
 - Added Vacation Mode to pause auto-pay reminders while preserving manual-payment reminders.
 - Added on-device receipt OCR for image attachments and first-page PDFs, with editable amount and payment-date suggestions.
+- Added local CSV column-learning that remembers repeated mapping corrections after three confirmations.
 
 ## [v2.1.1] - 2026-04-29
 

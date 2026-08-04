@@ -34,6 +34,7 @@ import com.sysadmindoc.billminder.data.CurrencyCatalog
 import com.sysadmindoc.billminder.data.CurrencyConverter
 import com.sysadmindoc.billminder.data.CsvImport
 import com.sysadmindoc.billminder.data.CsvImportMapping
+import com.sysadmindoc.billminder.data.CsvMappingLearning
 import com.sysadmindoc.billminder.data.CsvMigrationPreset
 import com.sysadmindoc.billminder.data.CsvTable
 import com.sysadmindoc.billminder.data.InterchangeFormat
@@ -544,6 +545,13 @@ fun SettingsScreen(
             CsvMappingDialog(
                 table = csvTable!!,
                 onImport = { mapping ->
+                    CsvMappingLearning.recordCorrections(
+                        context = context,
+                        headers = csvTable!!.headers,
+                        baseline = CsvMigrationPreset.detect(csvTable!!.headers)
+                            .mapping(csvTable!!.headers).columns,
+                        selected = mapping.columns
+                    )
                     viewModel.importCsv(csvUri!!, mapping) { result, error ->
                         if (result != null) {
                             showCsvMapping = false
@@ -1055,6 +1063,7 @@ private fun CsvMappingDialog(
     onImport: (CsvImportMapping) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
     val fields = listOf(
         CsvField.NAME,
         CsvField.AMOUNT,
@@ -1072,9 +1081,16 @@ private fun CsvMappingDialog(
     )
     val initialPreset = remember { CsvMigrationPreset.detect(table.headers) }
     var selectedPreset by remember { mutableStateOf(initialPreset) }
+    val baseline = remember { initialPreset.mapping(table.headers).columns }
+    val learnedMapping = remember {
+        CsvMappingLearning.suggestedMapping(context, table.headers, baseline)
+    }
+    val learnedCount = remember {
+        CsvMappingLearning.learnedCount(context, table.headers)
+    }
     val selected = remember {
         mutableStateMapOf<CsvField, Int?>().apply {
-            putAll(initialPreset.mapping(table.headers).columns)
+            putAll(learnedMapping)
         }
     }
     var expandedField by remember { mutableStateOf<CsvField?>(null) }
@@ -1111,7 +1127,14 @@ private fun CsvMappingDialog(
                                 onClick = {
                                     selectedPreset = preset
                                     selected.clear()
-                                    selected.putAll(preset.mapping(table.headers).columns)
+                                    val presetMapping = preset.mapping(table.headers).columns
+                                    selected.putAll(
+                                        if (preset == CsvMigrationPreset.AUTO_DETECT) {
+                                            CsvMappingLearning.suggestedMapping(context, table.headers, presetMapping)
+                                        } else {
+                                            presetMapping
+                                        }
+                                    )
                                     error = null
                                     showPresetMenu = false
                                 }
@@ -1120,6 +1143,15 @@ private fun CsvMappingDialog(
                     }
                 }
                 Text(selectedPreset.description, color = CatSubtext0, style = MaterialTheme.typography.bodySmall)
+                Text(
+                    if (learnedCount > 0) {
+                        "$learnedCount learned column mapping${if (learnedCount == 1) "" else "s"} active; new corrections apply after 3 confirmations"
+                    } else {
+                        "Correct a column three times to have it remembered for future imports"
+                    },
+                    color = CatMauve,
+                    style = MaterialTheme.typography.bodySmall
+                )
                 Text(
                     "${table.rows.size} rows detected. Required fields are marked with *.",
                     color = CatSubtext0,
