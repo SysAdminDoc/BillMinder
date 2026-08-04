@@ -520,6 +520,35 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun scanSms(onComplete: (List<SmsBillCandidate>, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val candidates = withContext(Dispatchers.IO) {
+                    SmsBillReader.readRecent(getApplication())
+                }
+                onComplete(candidates, null)
+            } catch (error: SecurityException) {
+                onComplete(emptyList(), "SMS permission is required to scan messages")
+            } catch (error: Exception) {
+                onComplete(emptyList(), error.message ?: "Unable to scan SMS")
+            }
+        }
+    }
+
+    fun importSmsCandidate(candidate: SmsBillCandidate) {
+        val bill = Bill(
+            name = candidate.name,
+            amount = candidate.amount,
+            dueDay = candidate.dueDate.dayOfMonth,
+            dueMonth = candidate.dueDate.monthValue - 1,
+            dueYear = candidate.dueDate.year,
+            recurrence = Recurrence.ONE_TIME,
+            currency = candidate.currency,
+            notes = "Proposed from SMS from ${candidate.sender}"
+        )
+        saveBill(bill, emptyList())
+    }
+
     fun exportCsv(uri: Uri) {
         viewModelScope.launch {
             BackupManager.exportCsv(getApplication(), uri, repo)

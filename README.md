@@ -21,6 +21,7 @@ A bill tracking and reminder app for Android. Never miss a payment again.
 - **Merchant Normalization** - Recognizes 400+ common statement aliases while preserving unknown names
 - **Multi-Currency** - Store each bill in its native currency, convert dashboard totals offline, and override FX rates manually
 - **Encrypted Receipt Attachments** - Attach an image or PDF when marking a payment paid; receipts stay encrypted in app-private storage
+- **SMS Bill Proposals** - Opt-in local inbox scan that proposes one-time bills for user review
 
 ### Reminders (Alarm-Style)
 - **Exact Alarms** - Uses AlarmManager.setAlarmClock() for reliable delivery (same as alarm clock apps)
@@ -93,6 +94,7 @@ A bill tracking and reminder app for Android. Never miss a payment again.
 - Navigation Compose with bottom nav
 - Canvas-drawn pie chart and trend line (no chart libraries)
 - DataStore for preferences
+- Optional `READ_SMS` access is requested only from the explicit SMS proposal action; messages are parsed locally and never uploaded.
 
 ## Build
 

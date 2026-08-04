@@ -37,6 +37,7 @@ import com.sysadmindoc.billminder.data.CsvImportMapping
 import com.sysadmindoc.billminder.data.CsvMigrationPreset
 import com.sysadmindoc.billminder.data.CsvTable
 import com.sysadmindoc.billminder.data.InterchangeFormat
+import com.sysadmindoc.billminder.data.SmsBillCandidate
 import com.sysadmindoc.billminder.notification.ReminderPrefs
 import com.sysadmindoc.billminder.notification.GeofenceManager
 import com.sysadmindoc.billminder.notification.GeofencePrefs
@@ -64,6 +65,8 @@ fun SettingsScreen(
     var fullScreenReminders by remember { mutableStateOf(ReminderPrefs.isFullScreenEnabled(context)) }
     var showGeofenceDialog by remember { mutableStateOf(false) }
     var homeGeofenceEnabled by remember { mutableStateOf(GeofencePrefs.get(context)?.enabled == true) }
+    var smsCandidates by remember { mutableStateOf<List<SmsBillCandidate>>(emptyList()) }
+    var showSmsCandidates by remember { mutableStateOf(false) }
 
     val backgroundLocationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -86,6 +89,23 @@ fun SettingsScreen(
             backgroundLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
         } else {
             showGeofenceDialog = true
+        }
+    }
+
+    val smsPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            viewModel.scanSms { candidates, error ->
+                if (error != null) {
+                    Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+                } else {
+                    smsCandidates = candidates
+                    showSmsCandidates = true
+                }
+            }
+        } else {
+            Toast.makeText(context, "SMS access was not granted", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -477,6 +497,36 @@ fun SettingsScreen(
             subtitle = "Map columns or migrate Mint, Tiller, and Empower exports"
         ) {
             importCsvLauncher.launch(arrayOf("text/csv", "text/plain", "application/vnd.ms-excel"))
+        }
+
+        SettingsRow(
+            icon = Icons.Filled.Sms,
+            title = "Scan Payment SMS",
+            subtitle = "Opt-in local scan; propose bills from recent messages"
+        ) {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED) {
+                viewModel.scanSms { candidates, error ->
+                    if (error != null) {
+                        Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+                    } else {
+                        smsCandidates = candidates
+                        showSmsCandidates = true
+                    }
+                }
+            } else {
+                smsPermissionLauncher.launch(Manifest.permission.READ_SMS)
+            }
+        }
+
+        if (showSmsCandidates) {
+            SmsCandidatesDialog(
+                candidates = smsCandidates,
+                onAccept = { candidate ->
+                    viewModel.importSmsCandidate(candidate)
+                    smsCandidates = smsCandidates - candidate
+                },
+                onDismiss = { showSmsCandidates = false }
+            )
         }
 
         if (showCsvMapping && csvTable != null && csvUri != null) {
@@ -1136,6 +1186,57 @@ private fun CsvMappingDialog(
             TextButton(onClick = onDismiss) {
                 Text("Cancel", color = CatSubtext0)
             }
+        }
+    )
+}
+
+@Composable
+private fun SmsCandidatesDialog(
+    candidates: List<SmsBillCandidate>,
+    onAccept: (SmsBillCandidate) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CatSurface0,
+        title = { Text("SMS bill proposals", color = CatText) },
+        text = {
+            if (candidates.isEmpty()) {
+                Text("No bill-shaped messages were found in the recent inbox.", color = CatSubtext0)
+            } else {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        "Review each proposal before it is added. Message text stays on this device.",
+                        color = CatSubtext0,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    candidates.forEach { candidate ->
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = CatSurface1),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(candidate.name, color = CatText, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "${candidate.amount} ${candidate.currency} · due ${candidate.dueDate}",
+                                    color = CatBlue,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                Text(candidate.preview, color = CatSubtext0, style = MaterialTheme.typography.bodySmall, maxLines = 3)
+                                TextButton(onClick = { onAccept(candidate) }) {
+                                    Text("Add one-time bill", color = CatGreen)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Done", color = CatBlue) }
         }
     )
 }
