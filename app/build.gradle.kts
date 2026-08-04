@@ -9,6 +9,17 @@ android {
     namespace = "com.sysadmindoc.billminder"
     compileSdk = 35
 
+    flavorDimensions += "distribution"
+
+    productFlavors {
+        create("play") {
+            dimension = "distribution"
+        }
+        create("fdroid") {
+            dimension = "distribution"
+        }
+    }
+
     defaultConfig {
         applicationId = "com.sysadmindoc.billminder"
         minSdk = 26
@@ -49,6 +60,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -73,8 +85,8 @@ dependencies {
     implementation(libs.androidx.glance.material3)
     implementation(libs.androidx.biometric)
     implementation(libs.androidx.fragment)
-    implementation(libs.play.services.location)
-    implementation(libs.play.services.wearable)
+    add("playImplementation", libs.play.services.location)
+    add("playImplementation", libs.play.services.wearable)
     implementation(libs.mlkit.text.recognition)
     implementation(libs.gson)
     testImplementation("junit:junit:4.13.2")

@@ -26,6 +26,7 @@ All notable changes to BillMinder will be documented in this file.
 - Added Vacation Mode to pause auto-pay reminders while preserving manual-payment reminders.
 - Added on-device receipt OCR for image attachments and first-page PDFs, with editable amount and payment-date suggestions.
 - Added local CSV column-learning that remembers repeated mapping corrections after three confirmations.
+- Added Play and F-Droid app flavors; the F-Droid build removes Play geofencing and Wear Data Layer integrations and contains no billing or crash-reporting dependency.
 
 ## [v2.1.1] - 2026-04-29
 

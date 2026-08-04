@@ -33,7 +33,7 @@ A bill tracking and reminder app for Android. Never miss a payment again.
 - **Overdue Notifications** - Persistent (non-dismissible) for overdue bills
 - **Cascading Reminders** - Dismissed reminders escalate at 4 hours, 24 hours, and overdue
 - **Full-Screen Alarm Option** - Opt-in alarm-style due screen with mark-paid, snooze, and dismiss actions
-- **Home Geofence** - Opt-in enter-and-dwell reminders around a configurable home radius
+- **Home Geofence** - Opt-in enter-and-dwell reminders around a configurable home radius (Play flavor)
 - **Vacation Mode** - Pause reminders for auto-pay bills while keeping manual-payment reminders active
 - **Calendar Handoff** - Add the next due date as an optional all-day event, including recurrence, to the user's calendar app
 
@@ -76,7 +76,7 @@ A bill tracking and reminder app for Android. Never miss a payment again.
 ### Widget
 - **Home Screen Widget** - Glance-based widget showing upcoming bills, amounts, and days until due
 - **Widget Variants** - Next 3 bills and current-month payment progress widgets
-- **Wear OS Tile** - Shows the next unpaid bill and sends a one-tap mark-paid action back to the phone through the Wear Data Layer
+- **Wear OS Tile** - Shows the next unpaid bill and sends a one-tap mark-paid action back to the phone through the Wear Data Layer (Play flavor)
 - **Lock-Screen Widget** - Keyguard-capable compact due reminder that omits amounts for privacy
 
 ### UI/UX
@@ -97,6 +97,7 @@ A bill tracking and reminder app for Android. Never miss a payment again.
 - Navigation Compose with bottom nav
 - Canvas-drawn pie chart and trend line (no chart libraries)
 - DataStore for preferences
+- F-Droid flavor excludes Play-only geofencing and Wear Data Layer code; the app has no Play billing or crash-reporting dependency.
 - Optional `READ_SMS` access is requested only from the explicit SMS proposal action; messages are parsed locally and never uploaded.
 - Receipt OCR uses the bundled on-device model; receipt files remain encrypted in app-private storage and OCR text is not uploaded.
 
@@ -107,3 +108,9 @@ A bill tracking and reminder app for Android. Never miss a payment again.
 ```
 
 APK output: `app/build/outputs/apk/debug/app-debug.apk`
+
+The open-source distribution variant can be built without Play-only integrations:
+
+```bash
+./gradlew :app:assembleFdroidDebug
+```

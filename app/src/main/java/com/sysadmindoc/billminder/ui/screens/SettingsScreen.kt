@@ -39,6 +39,7 @@ import com.sysadmindoc.billminder.data.CsvMigrationPreset
 import com.sysadmindoc.billminder.data.CsvTable
 import com.sysadmindoc.billminder.data.InterchangeFormat
 import com.sysadmindoc.billminder.data.SmsBillCandidate
+import com.sysadmindoc.billminder.DistributionFeatures
 import com.sysadmindoc.billminder.notification.ReminderPrefs
 import com.sysadmindoc.billminder.notification.GeofenceManager
 import com.sysadmindoc.billminder.notification.GeofencePrefs
@@ -66,7 +67,9 @@ fun SettingsScreen(
     var fullScreenReminders by remember { mutableStateOf(ReminderPrefs.isFullScreenEnabled(context)) }
     var vacationMode by remember { mutableStateOf(ReminderPrefs.isVacationMode(context)) }
     var showGeofenceDialog by remember { mutableStateOf(false) }
-    var homeGeofenceEnabled by remember { mutableStateOf(GeofencePrefs.get(context)?.enabled == true) }
+    var homeGeofenceEnabled by remember {
+        mutableStateOf(DistributionFeatures.includesPlayServices && GeofencePrefs.get(context)?.enabled == true)
+    }
     var smsCandidates by remember { mutableStateOf<List<SmsBillCandidate>>(emptyList()) }
     var showSmsCandidates by remember { mutableStateOf(false) }
 
@@ -217,58 +220,60 @@ fun SettingsScreen(
             }
         )
 
-        SettingsRow(
-            icon = Icons.Filled.LocationOn,
-            title = "Home Geofence",
-            subtitle = if (homeGeofenceEnabled) {
-                GeofencePrefs.get(context)?.let { "Active · ${it.radiusMeters.toInt()}m radius" } ?: "Active"
-            } else {
-                "Remind me when I arrive home"
-            }
-        ) {
-            val hasForeground = ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
-            val hasBackground = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
-                ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED
-            if (hasForeground && hasBackground) {
-                showGeofenceDialog = true
-            } else {
-                foregroundLocationLauncher.launch(
-                    arrayOf(
-                        Manifest.permission.ACCESS_FINE_LOCATION,
-                        Manifest.permission.ACCESS_COARSE_LOCATION
+        if (DistributionFeatures.includesPlayServices) {
+            SettingsRow(
+                icon = Icons.Filled.LocationOn,
+                title = "Home Geofence",
+                subtitle = if (homeGeofenceEnabled) {
+                    GeofencePrefs.get(context)?.let { "Active · ${it.radiusMeters.toInt()}m radius" } ?: "Active"
+                } else {
+                    "Remind me when I arrive home"
+                }
+            ) {
+                val hasForeground = ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.ACCESS_FINE_LOCATION
+                ) == PackageManager.PERMISSION_GRANTED
+                val hasBackground = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED
+                if (hasForeground && hasBackground) {
+                    showGeofenceDialog = true
+                } else {
+                    foregroundLocationLauncher.launch(
+                        arrayOf(
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION
+                        )
                     )
+                }
+            }
+
+            if (showGeofenceDialog) {
+                HomeGeofenceDialog(
+                    config = GeofencePrefs.get(context),
+                    onSave = { latitude, longitude, radius ->
+                        GeofenceManager.register(context, latitude, longitude, radius) { success, error ->
+                            if (success) {
+                                GeofencePrefs.save(context, latitude, longitude, radius)
+                                homeGeofenceEnabled = true
+                                showGeofenceDialog = false
+                                Toast.makeText(context, "Home geofence enabled", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, error ?: "Unable to enable home geofence", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    },
+                    onDisable = {
+                        GeofenceManager.unregister(context) {
+                            GeofencePrefs.setEnabled(context, false)
+                            homeGeofenceEnabled = false
+                            showGeofenceDialog = false
+                            Toast.makeText(context, "Home geofence disabled", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    onDismiss = { showGeofenceDialog = false }
                 )
             }
-        }
-
-        if (showGeofenceDialog) {
-            HomeGeofenceDialog(
-                config = GeofencePrefs.get(context),
-                onSave = { latitude, longitude, radius ->
-                    GeofenceManager.register(context, latitude, longitude, radius) { success, error ->
-                        if (success) {
-                            GeofencePrefs.save(context, latitude, longitude, radius)
-                            homeGeofenceEnabled = true
-                            showGeofenceDialog = false
-                            Toast.makeText(context, "Home geofence enabled", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(context, error ?: "Unable to enable home geofence", Toast.LENGTH_LONG).show()
-                        }
-                    }
-                },
-                onDisable = {
-                    GeofenceManager.unregister(context) {
-                        GeofencePrefs.setEnabled(context, false)
-                        homeGeofenceEnabled = false
-                        showGeofenceDialog = false
-                        Toast.makeText(context, "Home geofence disabled", Toast.LENGTH_SHORT).show()
-                    }
-                },
-                onDismiss = { showGeofenceDialog = false }
-            )
         }
 
         // PIN fallback

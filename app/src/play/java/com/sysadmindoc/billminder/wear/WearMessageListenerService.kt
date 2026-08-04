@@ -1,9 +1,9 @@
 package com.sysadmindoc.billminder.wear
 
+import android.content.Intent
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.WearableListenerService
 import com.sysadmindoc.billminder.notification.ReminderReceiver
-import android.content.Intent
 
 class WearMessageListenerService : WearableListenerService() {
     override fun onMessageReceived(messageEvent: MessageEvent) {
