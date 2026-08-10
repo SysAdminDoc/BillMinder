@@ -41,3 +41,70 @@ All notable changes to BillMinder will be documented in this file.
 - Fixed: Fix build: add gradle wrapper, fix settings.gradle.kts, add missing category icons
 - BillMinder v2.0.0 - Major upgrade with features from competitor research
 - BillMinder v1.0.0 - Bill tracker with alarm-style reminders
+
+## Roadmap archive — 2026-08-10 — ROADMAP.md
+
+<details>
+<summary>Original roadmap snapshot</summary>
+
+```markdown
+# BillMinder — Roadmap
+
+Android bill tracking and reminder app. Kotlin + Jetpack Compose + Material 3, Room DB, AlarmManager-based reminders, Glance home-screen widget, biometric lock, Catppuccin AMOLED theme.
+
+## Planned Features
+
+### Core
+
+### Reminders
+
+### Dashboard
+
+### Data / Sync
+
+### Widget / Wear
+
+### Security
+
+### Packaging / QA
+
+## Competitive Research
+- **Bills Monitor / Bills Monitor Pro** — popular, simple category+due-date tracker; reviewed as buggy (misses reminders) and lacks sharing. Our edge: exact-alarm reliability + biometric lock + AMOLED UI.
+- **TimelyBills** — calendar view, in-app + system reminders, family sharing, no bank linking. Good reference for the sharing model if we add it.
+- **BillOut** — manual entry, calendar UI, privacy-first. Overlaps most with BillMinder; differentiate via widget quality + export portability.
+- **Monefy** — expense tracker, not bill reminder; not a direct competitor but the visual language is worth studying.
+
+## Nice-to-Haves
+
+## Open-Source Research (Round 2)
+
+### Related OSS Projects
+- **mkdaly/Payment-Reminder** — https://github.com/mkdaly/Payment-Reminder — Closest functional twin; bills + reminders + sufficient-funds check.
+- **mtotschnig/MyExpenses** — https://github.com/mtotschnig/MyExpenses — GPL Android expense tracker; recurring-transaction planner, widget support, password + device-lock security, bank-statement reconciliation.
+- **dsolonenko/financisto** — https://github.com/dsolonenko/financisto — Long-lived personal finance app; reference for export/import formats and currency/locale handling.
+- **firefly-iii/firefly-iii** — https://github.com/firefly-iii/firefly-iii — Self-hosted web finance manager; rule engine for transaction categorization is transplantable.
+- **Tanq16/ExpenseOwl** — https://github.com/Tanq16/ExpenseOwl — Simple self-hosted tracker with PWA installable on Android; recurring transactions + custom categories + currency symbol.
+- **Wapy.dev** — listed under the expense-tracker topic — subscription/recurring-expense dashboard, reminder-focused.
+- **Material You recurring expense tracker** (on money-manager topic) — https://github.com/topics/money-manager — Material-3 expressive UI reference.
+
+### Features to Borrow
+- **Sufficient-funds pre-check reminder** (mkdaly/Payment-Reminder) — before a scheduled payment, remind the user to verify that the source account will have funds, not just "your bill is due." Adds real value on top of "bill tracker" apps.
+- **Bank-statement reconciliation import** (MyExpenses) — import a bank CSV/OFX/QIF, auto-mark bills as Paid when a debit matches the amount/date/merchant, flag discrepancies.
+- **Rule engine for auto-categorization** (firefly-iii) — user-defined rules: `if merchant matches "Comcast*" and amount > $50 then category=Internet`. Useful once import is wired.
+- **Recurring-income tracking** (ExpenseOwl) — pair recurring bills with recurring paychecks, so the dashboard shows "estimated balance end of month," not just "estimated outflow."
+- **Homescreen shortcut + widget to Quick-Add bill** (MyExpenses) — long-press launcher shortcut to jump straight into Add Bill pre-filled with today's date.
+- **Device-lock + biometric gate** (MyExpenses) — hide amounts behind device credential, show masked totals on widget/lockscreen.
+- **Export/import schema (CSV/JSON/XLSX)** (financisto, ExpenseOwl) — documented, versioned backup schema that round-trips through git; more trustworthy than proprietary DB dumps.
+- **Currency-aware multi-account** (MyExpenses, financisto) — second account in EUR/GBP with live FX conversion, for users who pay international bills.
+- **Subscription-specific reminders + cost-per-year rollup** (Wapy.dev) — subscriptions get their own section showing annualized cost, next-billing date, cancel URL.
+- **PWA fallback + web companion** (ExpenseOwl) — a tiny read-only PWA for viewing on a laptop browser; shares the same JSON DB via optional sync folder.
+
+### Patterns & Architectures Worth Studying
+- **Plan/Schedule entity separate from Transaction** (MyExpenses) — a Plan owns the recurrence and generates Transactions; when a user edits "monthly rent", all future unpaid instances update atomically.
+- **Rule engine on import** (firefly-iii) — pure-function matchers: each rule is `(tx) => Partial<Tx>` composed in order; testable without Android.
+- **Room + KSP + Paging 3** (Material You recurring tracker) — idiomatic Compose stack; replace Paging 2 if BillMinder still uses the legacy version.
+- **WorkManager for reminder scheduling with AlarmManager fallback** — most modern Android finance apps use WM for daily "scan bills, fire reminders" then AlarmManager for the precise notification time, avoiding the exact-alarm permission prompt where possible.
+- **Widget (Glance) for "next 3 bills"** (MyExpenses widget pattern) — a Glance widget reads the Room DB via a repository shared with the app and renders the next 3 upcoming bills with tap-to-mark-paid.
+```
+
+</details>
