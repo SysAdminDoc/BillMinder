@@ -2,6 +2,10 @@
 
 All notable changes to BillMinder will be documented in this file.
 
+## [v2.2.1], 2026-08-29
+
+- New app icon: adaptive, themed (monochrome) and legacy variants regenerated from the 2026-08 icon set.
+
 ## [v2.2.0] - 2026-08-03
 
 - Added variable-amount bill ranges, observed-holiday reminder scheduling, dismissal-based reminder escalation, forecast and what-if planning, year-end CSV reports, and next-3/month-total widgets.
