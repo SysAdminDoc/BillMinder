@@ -46,7 +46,9 @@ fun BillMinderTheme(content: @Composable () -> Unit) {
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
+            @Suppress("DEPRECATION")
             window.statusBarColor = CatCrust.toArgb()
+            @Suppress("DEPRECATION")
             window.navigationBarColor = CatCrust.toArgb()
             WindowCompat.getInsetsController(window, view).apply {
                 isAppearanceLightStatusBars = false

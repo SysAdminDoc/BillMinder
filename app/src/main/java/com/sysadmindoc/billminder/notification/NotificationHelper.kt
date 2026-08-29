@@ -139,7 +139,7 @@ object NotificationHelper {
 
         val notificationBuilder = NotificationCompat.Builder(context, CHANNEL_REMINDERS)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("$billName - ${CurrencyFormatter.format(amount, currency)}$autoPayNote")
+            .setContentTitle("$billName · ${CurrencyFormatter.format(amount, currency)}$autoPayNote")
             .setContentText("Bill is $dueText")
             .setStyle(NotificationCompat.BigTextStyle()
                 .bigText("$billName is $dueText.\nAmount: ${CurrencyFormatter.format(amount, currency)}$autoPayNote"))

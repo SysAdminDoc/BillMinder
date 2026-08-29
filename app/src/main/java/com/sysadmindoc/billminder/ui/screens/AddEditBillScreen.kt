@@ -1,29 +1,34 @@
 package com.sysadmindoc.billminder.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.sysadmindoc.billminder.data.*
+import com.sysadmindoc.billminder.ui.components.GroupDivider
+import com.sysadmindoc.billminder.ui.components.GroupedSurface
+import com.sysadmindoc.billminder.ui.components.SectionHeading
+import com.sysadmindoc.billminder.ui.components.SettingsStyleRow
+import com.sysadmindoc.billminder.ui.components.SquareToggle
+import com.sysadmindoc.billminder.ui.components.getCategoryIcon
 import com.sysadmindoc.billminder.ui.theme.*
 import com.sysadmindoc.billminder.viewmodel.BillViewModel
 import kotlinx.coroutines.launch
-import androidx.compose.foundation.horizontalScroll
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -95,18 +100,85 @@ fun AddEditBillScreen(
     var showSecondReminderMenu by remember { mutableStateOf(false) }
     var showCurrencyMenu by remember { mutableStateOf(false) }
 
+    fun saveBill() {
+        val parsedAmount = amount.toDoubleOrNull() ?: 0.0
+        val maxDueValue = if (recurrence == Recurrence.WEEKLY || recurrence == Recurrence.BIWEEKLY) 7 else 31
+        val parsedDay = dueDay.toIntOrNull()?.coerceIn(1, maxDueValue) ?: 1
+        val parsedMin = if (isVariableAmount) amountMin.toDoubleOrNull() else null
+        val parsedMax = if (isVariableAmount) amountMax.toDoubleOrNull() else null
+        if (name.isBlank() || parsedAmount <= 0) return
+        if (isVariableAmount) {
+            val validationError = BillValidation.variableAmountError(parsedAmount, parsedMin, parsedMax)
+            if (validationError != null) {
+                amountRangeError = validationError
+                return
+            }
+            amountRangeError = null
+        }
+        if (isSplitBill) {
+            when {
+                payees.any { it.name.isBlank() } -> {
+                    splitError = "Enter a name for every payee"
+                    return
+                }
+                payees.any { it.sharePercent <= 0.0 } -> {
+                    splitError = "Each payee must have a positive share"
+                    return
+                }
+                !PayeeMath.isBalanced(payees) -> {
+                    splitError = "Payee shares must total 100%"
+                    return
+                }
+                else -> splitError = null
+            }
+        }
+
+        val bill = Bill(
+            id = if (isEditing) billId!! else 0,
+            name = name.trim(),
+            amount = parsedAmount,
+            dueDay = parsedDay,
+            dueMonth = dueMonth,
+            dueYear = dueYear,
+            category = category,
+            recurrence = recurrence,
+            isAutoPay = isAutoPay,
+            notes = notes.trim(),
+            tags = tags.trim(),
+            paymentUrl = paymentUrl.trim(),
+            reminderTiming = reminderTiming,
+            secondReminderTiming = secondReminder,
+            isEnabled = isEnabled,
+            color = selectedColor,
+            isVariableAmount = isVariableAmount,
+            amountMin = parsedMin,
+            amountMax = parsedMax,
+            currency = currency
+        )
+        viewModel.saveBill(bill, if (isSplitBill) payees.toList() else emptyList())
+        onNavigateBack()
+    }
+
     Scaffold(
         containerColor = CatCrust,
+        contentWindowInsets = WindowInsets(0.dp),
         topBar = {
             TopAppBar(
                 title = { Text(if (isEditing) "Edit Bill" else "Add Bill", color = CatText) },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = CatCrust),
+                windowInsets = WindowInsets(0.dp),
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Filled.ArrowBack, "Back", tint = CatText)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CatText)
                     }
                 },
                 actions = {
+                    TextButton(
+                        onClick = ::saveBill,
+                        enabled = name.isNotBlank() && (amount.toDoubleOrNull() ?: 0.0) > 0
+                    ) {
+                        Text("Save", color = if (name.isNotBlank() && (amount.toDoubleOrNull() ?: 0.0) > 0) CatBlue else CatOverlay0)
+                    }
                     if (isEditing) {
                         IconButton(onClick = {
                             scope.launch {
@@ -136,33 +208,66 @@ fun AddEditBillScreen(
 
             // Quick-add templates (only when adding new bill)
             if (!isEditing) {
-                Text("Quick Add", style = MaterialTheme.typography.labelLarge, color = CatSubtext0)
-                Row(
-                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    billTemplates.forEach { template ->
-                        SuggestionChip(
-                            onClick = {
-                                name = template.name
-                                category = template.category
-                                recurrence = template.recurrence
-                                selectedColor = CategoryColors[template.category.ordinal % CategoryColors.size].value.toLong()
-                                template.suggestedAmount?.let {
-                                    amount = it.toBigDecimal().stripTrailingZeros().toPlainString()
+                val quickTemplates = listOf(
+                    BillTemplate("Rent", BillCategory.RENT, null),
+                    BillTemplate("Electric", BillCategory.UTILITIES, null),
+                    BillTemplate("Internet", BillCategory.PHONE, null),
+                    BillTemplate("Insurance", BillCategory.INSURANCE, null),
+                    BillTemplate("Netflix", BillCategory.SUBSCRIPTION, 15.49),
+                    BillTemplate("Other", BillCategory.OTHER, null)
+                )
+                SectionHeading("Quick add")
+                GroupedSurface(contentPadding = PaddingValues(10.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        quickTemplates.chunked(3).forEach { templates ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                templates.forEach { template ->
+                                    Surface(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(54.dp)
+                                            .clickable {
+                                                name = template.name
+                                                category = template.category
+                                                recurrence = template.recurrence
+                                                selectedColor = CategoryColors[template.category.ordinal % CategoryColors.size].value.toLong()
+                                                template.suggestedAmount?.let {
+                                                    amount = it.toBigDecimal().stripTrailingZeros().toPlainString()
+                                                }
+                                            },
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = CatSurface0,
+                                        border = BorderStroke(1.dp, CatDivider)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                getCategoryIcon(template.category),
+                                                contentDescription = null,
+                                                tint = CategoryColors[template.category.ordinal % CategoryColors.size],
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(
+                                                template.name,
+                                                style = MaterialTheme.typography.labelLarge,
+                                                color = CatText,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
                                 }
-                            },
-                            label = { Text(template.name) },
-                            colors = SuggestionChipDefaults.suggestionChipColors(
-                                containerColor = CatSurface0,
-                                labelColor = CatSubtext0
-                            ),
-                            border = null
-                        )
+                            }
+                        }
                     }
                 }
             }
 
+            SectionHeading("Essentials")
+            GroupedSurface(contentPadding = PaddingValues(14.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
@@ -194,7 +299,7 @@ fun AddEditBillScreen(
 
             Box {
                 OutlinedTextField(
-                    value = "${currency} - ${CurrencyCatalog.find(currency).name}",
+                    value = "${currency} · ${CurrencyCatalog.find(currency).name}",
                     onValueChange = {},
                     label = { Text("Bill Currency") },
                     readOnly = true,
@@ -213,7 +318,7 @@ fun AddEditBillScreen(
                         DropdownMenuItem(
                             text = {
                                 Text(
-                                    "${info.code} - ${info.name}",
+                                    "${info.code} · ${info.name}",
                                     color = if (info.code == currency) CatBlue else CatText
                                 )
                             },
@@ -226,23 +331,17 @@ fun AddEditBillScreen(
                 }
             }
 
-            // Variable amount toggle + range
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+            SettingsStyleRow(
+                title = "Variable amount",
+                subtitle = "Track an expected value and allowed range",
+                icon = Icons.Filled.Tune
             ) {
-                Text("Variable Amount", color = CatText, style = MaterialTheme.typography.bodyLarge)
-                Switch(
+                SquareToggle(
                     checked = isVariableAmount,
                     onCheckedChange = {
                         isVariableAmount = it
                         amountRangeError = null
-                    },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = CatCrust, checkedTrackColor = CatBlue,
-                        uncheckedThumbColor = CatOverlay0, uncheckedTrackColor = CatSurface1
-                    )
+                    }
                 )
             }
 
@@ -281,30 +380,18 @@ fun AddEditBillScreen(
                 }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+            SettingsStyleRow(
+                title = "Split bill",
+                subtitle = "Assign the bill across payees by percentage",
+                icon = Icons.AutoMirrored.Filled.CallSplit
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Split Bill", color = CatText, style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        "Assign the bill across payees by percentage",
-                        color = CatSubtext0,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-                Switch(
+                SquareToggle(
                     checked = isSplitBill,
                     onCheckedChange = {
                         isSplitBill = it
                         splitError = null
                         if (it && payees.isEmpty()) payees.add(PayeeDraft("", 100.0))
-                    },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = CatCrust, checkedTrackColor = CatBlue,
-                        uncheckedThumbColor = CatOverlay0, uncheckedTrackColor = CatSurface1
-                    )
+                    }
                 )
             }
 
@@ -372,7 +459,12 @@ fun AddEditBillScreen(
                     }
                 }
             }
+            }
+            }
 
+            SectionHeading("Schedule")
+            GroupedSurface(contentPadding = PaddingValues(14.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(
                 value = dueDay,
                 onValueChange = { v ->
@@ -513,8 +605,12 @@ fun AddEditBillScreen(
                     }
                 }
             }
+            }
+            }
 
-            // Tags
+            SectionHeading("Payment & reminders")
+            GroupedSurface(contentPadding = PaddingValues(14.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(
                 value = tags,
                 onValueChange = { tags = it },
@@ -536,36 +632,25 @@ fun AddEditBillScreen(
                 colors = billFieldColors()
             )
 
-            // Toggles
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+            SettingsStyleRow(
+                title = "Auto-pay",
+                subtitle = "Show this bill as paid automatically",
+                icon = Icons.Filled.Payments
             ) {
-                Text("Auto-Pay", color = CatText, style = MaterialTheme.typography.bodyLarge)
-                Switch(
+                SquareToggle(
                     checked = isAutoPay,
-                    onCheckedChange = { isAutoPay = it },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = CatCrust, checkedTrackColor = CatGreen,
-                        uncheckedThumbColor = CatOverlay0, uncheckedTrackColor = CatSurface1
-                    )
+                    onCheckedChange = { isAutoPay = it }
                 )
             }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+            GroupDivider()
+            SettingsStyleRow(
+                title = "Reminders",
+                subtitle = "Notify me before this bill is due",
+                icon = Icons.Filled.NotificationsActive
             ) {
-                Text("Reminders Enabled", color = CatText, style = MaterialTheme.typography.bodyLarge)
-                Switch(
+                SquareToggle(
                     checked = isEnabled,
-                    onCheckedChange = { isEnabled = it },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = CatCrust, checkedTrackColor = CatBlue,
-                        uncheckedThumbColor = CatOverlay0, uncheckedTrackColor = CatSurface1
-                    )
+                    onCheckedChange = { isEnabled = it }
                 )
             }
 
@@ -579,11 +664,10 @@ fun AddEditBillScreen(
                     Box(
                         modifier = Modifier
                             .size(36.dp)
-                            .clip(CircleShape)
-                            .background(color)
+                            .background(color, RoundedCornerShape(8.dp))
                             .then(
                                 if (color.value.toLong() == selectedColor)
-                                    Modifier.border(3.dp, CatText, CircleShape)
+                                    Modifier.border(3.dp, CatText, RoundedCornerShape(8.dp))
                                 else Modifier
                             )
                             .clickable { selectedColor = color.value.toLong() }
@@ -600,70 +684,15 @@ fun AddEditBillScreen(
                 maxLines = 4,
                 colors = billFieldColors()
             )
+            }
+            }
 
             // Save
             Button(
-                onClick = {
-                    val parsedAmount = amount.toDoubleOrNull() ?: 0.0
-                    val maxDueValue = if (recurrence == Recurrence.WEEKLY || recurrence == Recurrence.BIWEEKLY) 7 else 31
-                    val parsedDay = dueDay.toIntOrNull()?.coerceIn(1, maxDueValue) ?: 1
-                    val parsedMin = if (isVariableAmount) amountMin.toDoubleOrNull() else null
-                    val parsedMax = if (isVariableAmount) amountMax.toDoubleOrNull() else null
-                    if (name.isBlank() || parsedAmount <= 0) return@Button
-                    if (isVariableAmount) {
-                        val validationError = BillValidation.variableAmountError(parsedAmount, parsedMin, parsedMax)
-                        if (validationError != null) {
-                            amountRangeError = validationError
-                            return@Button
-                        }
-                        amountRangeError = null
-                    }
-                    if (isSplitBill) {
-                        when {
-                            payees.any { it.name.isBlank() } -> {
-                                splitError = "Enter a name for every payee"
-                                return@Button
-                            }
-                            payees.any { it.sharePercent <= 0.0 } -> {
-                                splitError = "Each payee must have a positive share"
-                                return@Button
-                            }
-                            !PayeeMath.isBalanced(payees) -> {
-                                splitError = "Payee shares must total 100%"
-                                return@Button
-                            }
-                            else -> splitError = null
-                        }
-                    }
-
-                    val bill = Bill(
-                        id = if (isEditing) billId!! else 0,
-                        name = name.trim(),
-                        amount = parsedAmount,
-                        dueDay = parsedDay,
-                        dueMonth = dueMonth,
-                        dueYear = dueYear,
-                        category = category,
-                        recurrence = recurrence,
-                        isAutoPay = isAutoPay,
-                        notes = notes.trim(),
-                        tags = tags.trim(),
-                        paymentUrl = paymentUrl.trim(),
-                        reminderTiming = reminderTiming,
-                        secondReminderTiming = secondReminder,
-                        isEnabled = isEnabled,
-                        color = selectedColor,
-                        isVariableAmount = isVariableAmount,
-                        amountMin = parsedMin,
-                        amountMax = parsedMax,
-                        currency = currency
-                    )
-                    viewModel.saveBill(bill, if (isSplitBill) payees.toList() else emptyList())
-                    onNavigateBack()
-                },
+                onClick = ::saveBill,
                 modifier = Modifier.fillMaxWidth().height(52.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = CatBlue, contentColor = CatCrust),
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(8.dp),
                 enabled = name.isNotBlank() && (amount.toDoubleOrNull() ?: 0.0) > 0
             ) {
                 Text(

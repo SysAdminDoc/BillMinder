@@ -177,7 +177,7 @@ object BackupManager {
         }.toList().sortedWith(compareBy({ it.first.first }, { it.first.second }))
 
         val sb = StringBuilder()
-        sb.appendLine("BillMinder Year-End Report - $year")
+        sb.appendLine("BillMinder Year-End Report ($year)")
         sb.appendLine()
         sb.appendLine("Category,Bill Name,Payment Date,Currency,Amount,Confirmation #")
 

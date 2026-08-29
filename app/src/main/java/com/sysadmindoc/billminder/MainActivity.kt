@@ -15,6 +15,7 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -277,7 +278,7 @@ private fun DecoyScreen() {
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(Icons.Filled.ReceiptLong, contentDescription = null, tint = CatBlue, modifier = Modifier.size(48.dp))
+            Icon(Icons.AutoMirrored.Filled.ReceiptLong, contentDescription = null, tint = CatBlue, modifier = Modifier.size(48.dp))
             Spacer(Modifier.height(16.dp))
             Text("No bills yet", color = CatText, style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.height(8.dp))
@@ -314,38 +315,43 @@ fun BillMinderNavHost(
         containerColor = CatCrust,
         bottomBar = {
             if (showBottomBar) {
-                NavigationBar(
-                    containerColor = CatMantle,
-                    contentColor = CatText
-                ) {
-                    BottomTab.entries.forEach { tab ->
-                        val isSelected = when (tab) {
-                            BottomTab.HOME -> currentRoute == "home"
-                            BottomTab.CALENDAR -> currentRoute == "calendar"
-                            BottomTab.STATS -> currentRoute == "stats"
-                            BottomTab.SETTINGS -> currentRoute == "settings"
-                        }
-                        NavigationBarItem(
-                            selected = isSelected,
-                            onClick = {
-                                selectedTab = tab
-                                val route = tab.name.lowercase()
-                                navController.navigate(route) {
-                                    popUpTo("home") { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            icon = { Icon(tab.icon, tab.label) },
-                            label = { Text(tab.label) },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = CatBlue,
-                                selectedTextColor = CatBlue,
-                                indicatorColor = CatBlue.copy(alpha = 0.12f),
-                                unselectedIconColor = CatOverlay0,
-                                unselectedTextColor = CatOverlay0
+                Column {
+                    HorizontalDivider(color = CatDivider)
+                    NavigationBar(
+                        modifier = Modifier.height(76.dp),
+                        containerColor = CatMantle,
+                        contentColor = CatText,
+                        tonalElevation = 0.dp
+                    ) {
+                        BottomTab.entries.forEach { tab ->
+                            val isSelected = when (tab) {
+                                BottomTab.HOME -> currentRoute == "home"
+                                BottomTab.CALENDAR -> currentRoute == "calendar"
+                                BottomTab.STATS -> currentRoute == "stats"
+                                BottomTab.SETTINGS -> currentRoute == "settings"
+                            }
+                            NavigationBarItem(
+                                selected = isSelected,
+                                onClick = {
+                                    selectedTab = tab
+                                    val route = tab.name.lowercase()
+                                    navController.navigate(route) {
+                                        popUpTo("home") { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                },
+                                icon = { Icon(tab.icon, tab.label, modifier = Modifier.size(24.dp)) },
+                                label = { Text(tab.label, style = MaterialTheme.typography.labelMedium) },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = CatBlue,
+                                    selectedTextColor = CatBlue,
+                                    indicatorColor = CatMantle,
+                                    unselectedIconColor = CatOverlay0,
+                                    unselectedTextColor = CatOverlay0
+                                )
                             )
-                        )
+                        }
                     }
                 }
             }

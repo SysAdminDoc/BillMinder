@@ -29,11 +29,17 @@ import com.sysadmindoc.billminder.data.BudgetMath
 import com.sysadmindoc.billminder.data.BudgetPrefs
 import com.sysadmindoc.billminder.data.CurrencyFormatter
 import com.sysadmindoc.billminder.data.Recurrence
+import com.sysadmindoc.billminder.ui.components.GroupDivider
+import com.sysadmindoc.billminder.ui.components.GroupedSurface
+import com.sysadmindoc.billminder.ui.components.SectionHeading
 import com.sysadmindoc.billminder.ui.theme.*
 import com.sysadmindoc.billminder.viewmodel.BillViewModel
 import com.sysadmindoc.billminder.viewmodel.BillWithStatus
 import com.sysadmindoc.billminder.viewmodel.ChartData
 import com.sysadmindoc.billminder.viewmodel.MonthlyCashFlow
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 private val chartColors = listOf(
     CatBlue, CatMauve, CatGreen, CatPeach, CatYellow,
@@ -59,69 +65,63 @@ fun StatsScreen(viewModel: BillViewModel) {
     ) {
         Spacer(Modifier.height(4.dp))
 
-        // Lifetime spending
-        Card(
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = CatBase)
-        ) {
-            Column(modifier = Modifier.padding(20.dp)) {
-                Text("Lifetime Spending", style = MaterialTheme.typography.labelLarge, color = CatSubtext0)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    CurrencyFormatter.format(chartData.lifetimeTotal, chartData.currency),
-                    fontSize = 36.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = CatText
-                )
-                Text(
-                    "${summary.billCount} active bills",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = CatSubtext0
-                )
-            }
+        Column {
+            Text(
+                "Insights",
+                color = CatText,
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(Date()),
+                color = CatSubtext0,
+                style = MaterialTheme.typography.bodyMedium
+            )
         }
 
-        // Yearly projection
-        if (chartData.yearlyProjection > 0) {
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = CatSurface0)
+        GroupedSurface(contentPadding = PaddingValues(18.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(20.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text("Yearly Projection", style = MaterialTheme.typography.labelLarge, color = CatSubtext0)
-                        Text(
-                            CurrencyFormatter.format(chartData.yearlyProjection, chartData.currency),
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = CatPeach
-                        )
-                    }
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text("Monthly Avg", style = MaterialTheme.typography.labelMedium, color = CatSubtext0)
-                        Text(
-                            CurrencyFormatter.format(chartData.yearlyProjection / 12, chartData.currency),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = CatSubtext1
-                        )
-                    }
+                Column(modifier = Modifier.weight(1.15f)) {
+                    Text("Lifetime spending", style = MaterialTheme.typography.labelLarge, color = CatSubtext0)
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        CurrencyFormatter.format(chartData.lifetimeTotal, chartData.currency),
+                        fontSize = 31.sp,
+                        letterSpacing = (-0.7).sp,
+                        fontWeight = FontWeight.Bold,
+                        color = CatText
+                    )
+                    Text(
+                        "${summary.billCount} active bills",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = CatSubtext0
+                    )
+                }
+                Box(Modifier.width(1.dp).height(86.dp).background(CatDivider))
+                Spacer(Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(0.85f)) {
+                    Text("Annual projection", style = MaterialTheme.typography.labelLarge, color = CatSubtext0)
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        CurrencyFormatter.format(chartData.yearlyProjection, chartData.currency),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = CatBlue
+                    )
+                    Text("per year", style = MaterialTheme.typography.bodyMedium, color = CatSubtext0)
                 }
             }
         }
 
         // Forecast panel
         if (chartData.forecast.next90Bills > 0) {
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = CatBase)
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Text("Forecast", style = MaterialTheme.typography.titleMedium, color = CatText)
+            Column {
+                SectionHeading("Forecast", color = CatText)
+                Spacer(Modifier.height(8.dp))
+                GroupedSurface(contentPadding = PaddingValues(16.dp)) {
                     Spacer(Modifier.height(12.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -137,43 +137,49 @@ fun StatsScreen(viewModel: BillViewModel) {
 
         // Category pie chart
         if (chartData.categoryBreakdown.isNotEmpty()) {
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = CatBase)
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Text("Spending by Category", style = MaterialTheme.typography.titleMedium, color = CatText)
-                    Spacer(Modifier.height(16.dp))
-
-                    PieChart(chartData.categoryBreakdown, modifier = Modifier.fillMaxWidth().height(200.dp))
-
-                    Spacer(Modifier.height(16.dp))
-
-                    // Legend
-                    chartData.categoryBreakdown.forEachIndexed { index, (category, amount) ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(12.dp)
-                                    .clip(CircleShape)
-                                    .background(chartColors[index % chartColors.size])
-                            )
-                            Spacer(Modifier.width(10.dp))
-                            Text(
-                                category.label,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = CatText,
-                                modifier = Modifier.weight(1f)
-                            )
-                            Text(
-                                CurrencyFormatter.format(amount, chartData.currency),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = CatSubtext1
-                            )
+            Column {
+                SectionHeading("Spending by category", color = CatText)
+                Spacer(Modifier.height(8.dp))
+                GroupedSurface(contentPadding = PaddingValues(14.dp)) {
+                    val total = chartData.categoryBreakdown.sumOf { it.second }.coerceAtLeast(1.0)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        PieChart(
+                            chartData.categoryBreakdown,
+                            modifier = Modifier.weight(0.9f).height(150.dp)
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1.1f)) {
+                            chartData.categoryBreakdown.take(4).forEachIndexed { index, (category, amount) ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(10.dp)
+                                            .clip(CircleShape)
+                                            .background(chartColors[index % chartColors.size])
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        category.label,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = CatText,
+                                        modifier = Modifier.weight(1f),
+                                        maxLines = 1
+                                    )
+                                    Text(
+                                        "${(amount / total * 100).toInt()}%",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = CatSubtext1
+                                    )
+                                }
+                                if (index < minOf(3, chartData.categoryBreakdown.lastIndex)) GroupDivider()
+                            }
                         }
                     }
                 }
@@ -184,14 +190,11 @@ fun StatsScreen(viewModel: BillViewModel) {
 
         // Monthly trend
         if (chartData.monthlyTrend.any { it.second > 0 }) {
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = CatBase)
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Text("Monthly Trend", style = MaterialTheme.typography.titleMedium, color = CatText)
-                    Spacer(Modifier.height(16.dp))
-                    TrendChart(chartData.monthlyTrend, chartData.currency, modifier = Modifier.fillMaxWidth().height(180.dp))
+            Column {
+                SectionHeading("6-month trend", color = CatText)
+                Spacer(Modifier.height(8.dp))
+                GroupedSurface(contentPadding = PaddingValues(14.dp)) {
+                    TrendChart(chartData.monthlyTrend, chartData.currency, modifier = Modifier.fillMaxWidth().height(150.dp))
                 }
             }
         }
@@ -199,8 +202,8 @@ fun StatsScreen(viewModel: BillViewModel) {
         // Twelve-month paid versus outstanding plan
         if (chartData.cashFlow.any { it.paid > 0 || it.outstanding > 0 }) {
             Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = CatBase)
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = CatSurfaceRaised)
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
                     Text("12-Month Plan", style = MaterialTheme.typography.titleMedium, color = CatText)
@@ -259,8 +262,8 @@ private fun CategoryBudgetsPanel(
     val spentByCategory = chartData.categoryBreakdown.toMap()
 
     Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = CatBase)
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = CatSurfaceRaised)
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Text("Category Budgets", style = MaterialTheme.typography.titleMedium, color = CatText)
@@ -347,8 +350,8 @@ private fun WhatIfPanel(viewModel: BillViewModel) {
         }
 
     Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = CatBase)
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = CatSurfaceRaised)
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Row(
@@ -366,7 +369,7 @@ private fun WhatIfPanel(viewModel: BillViewModel) {
                 }
                 if (annualSavings > 0) {
                     Surface(
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(6.dp),
                         color = CatGreen.copy(alpha = 0.15f)
                     ) {
                         Text(
@@ -666,9 +669,10 @@ private fun ForecastColumn(label: String, amount: Double, count: Int, color: Col
         Spacer(Modifier.height(4.dp))
         Text(
             CurrencyFormatter.format(amount, currency),
-            fontSize = 20.sp,
+            fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
-            color = color
+            color = color,
+            maxLines = 1
         )
         Text(
             "$count bills",

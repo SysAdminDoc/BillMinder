@@ -44,6 +44,11 @@ import com.sysadmindoc.billminder.notification.ReminderPrefs
 import com.sysadmindoc.billminder.notification.GeofenceManager
 import com.sysadmindoc.billminder.notification.GeofencePrefs
 import com.sysadmindoc.billminder.security.SecurityPrefs
+import com.sysadmindoc.billminder.ui.components.GroupDivider
+import com.sysadmindoc.billminder.ui.components.GroupedSurface
+import com.sysadmindoc.billminder.ui.components.SectionHeading
+import com.sysadmindoc.billminder.ui.components.SettingsStyleRow
+import com.sysadmindoc.billminder.ui.components.SquareToggle
 import com.sysadmindoc.billminder.ui.theme.*
 import com.sysadmindoc.billminder.viewmodel.BillViewModel
 
@@ -172,6 +177,20 @@ fun SettingsScreen(
     val currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
     var yearEndYear by remember { mutableIntStateOf(currentYear) }
     var showYearPicker by remember { mutableStateOf(false) }
+    var hasPinSet by remember { mutableStateOf(SecurityPrefs.hasPin(context)) }
+    var hasDuressPin by remember { mutableStateOf(SecurityPrefs.hasDuressPin(context)) }
+    var showPinSetup by remember { mutableStateOf(false) }
+    var showDuressPinSetup by remember { mutableStateOf(false) }
+    var showAutoLockMenu by remember { mutableStateOf(false) }
+    var autoLockMinutes by remember { mutableIntStateOf(SecurityPrefs.getAutoLockMinutes(context)) }
+    val autoLockLabel = when (autoLockMinutes) {
+        0 -> "Immediately"
+        1 -> "1 minute"
+        5 -> "5 minutes"
+        15 -> "15 minutes"
+        30 -> "30 minutes"
+        else -> "$autoLockMinutes minutes"
+    }
 
     val exportYearEndLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/csv")
@@ -187,11 +206,24 @@ fun SettingsScreen(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Spacer(Modifier.height(4.dp))
+        Column {
+            Text(
+                text = "Settings",
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.Bold,
+                color = CatText
+            )
+            Text(
+                text = "Control privacy, reminders, planning, and your data.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = CatSubtext0
+            )
+        }
 
-        Text("Security", style = MaterialTheme.typography.labelLarge, color = CatSubtext0)
+        SectionHeading("Security & reminders")
+        GroupedSurface {
         SettingsToggle(
             icon = Icons.Filled.Fingerprint,
             title = "Biometric Lock",
@@ -276,22 +308,6 @@ fun SettingsScreen(
             }
         }
 
-        // PIN fallback
-        var hasPinSet by remember { mutableStateOf(SecurityPrefs.hasPin(context)) }
-        var hasDuressPin by remember { mutableStateOf(SecurityPrefs.hasDuressPin(context)) }
-        var showPinSetup by remember { mutableStateOf(false) }
-        var showDuressPinSetup by remember { mutableStateOf(false) }
-        var showAutoLockMenu by remember { mutableStateOf(false) }
-        var autoLockMinutes by remember { mutableIntStateOf(SecurityPrefs.getAutoLockMinutes(context)) }
-        val autoLockLabel = when (autoLockMinutes) {
-            0 -> "Immediately"
-            1 -> "1 minute"
-            5 -> "5 minutes"
-            15 -> "15 minutes"
-            30 -> "30 minutes"
-            else -> "$autoLockMinutes minutes"
-        }
-
         SettingsRow(
             icon = Icons.Filled.Pin,
             title = if (hasPinSet) "Change PIN" else "Set PIN Fallback",
@@ -351,6 +367,7 @@ fun SettingsScreen(
                 }
             }
         }
+        }
 
         if (showPinSetup) {
             PinSetupDialog(
@@ -382,14 +399,13 @@ fun SettingsScreen(
             )
         }
 
-        Spacer(Modifier.height(12.dp))
-        Text("Currency", style = MaterialTheme.typography.labelLarge, color = CatSubtext0)
-
+        SectionHeading("Planning")
+        GroupedSurface {
         Box {
             SettingsRow(
                 icon = Icons.Filled.AttachMoney,
                 title = "Display Currency",
-                subtitle = "Dashboard totals: ${displayCurrency} - ${CurrencyCatalog.find(displayCurrency).name}"
+                subtitle = "Dashboard totals: ${displayCurrency} · ${CurrencyCatalog.find(displayCurrency).name}"
             ) {
                 showCurrencyMenu = true
             }
@@ -402,7 +418,7 @@ fun SettingsScreen(
                     DropdownMenuItem(
                         text = {
                             Text(
-                                "${info.code} - ${info.name}",
+                                "${info.code} · ${info.name}",
                                 color = if (info.code == displayCurrency) CatBlue else CatText
                             )
                         },
@@ -438,6 +454,7 @@ fun SettingsScreen(
         ) {
             showBudgetDialog = true
         }
+        }
 
         if (showBudgetDialog) {
             val existingBudgets = BudgetPrefs.getAll(context)
@@ -462,9 +479,8 @@ fun SettingsScreen(
             )
         }
 
-        Spacer(Modifier.height(12.dp))
-        Text("Data", style = MaterialTheme.typography.labelLarge, color = CatSubtext0)
-
+        SectionHeading("Data & transfer")
+        GroupedSurface {
         SettingsRow(
             icon = Icons.Filled.Upload,
             title = "Export Backup (JSON)",
@@ -588,6 +604,7 @@ fun SettingsScreen(
         ) {
             showYearPicker = true
         }
+        }
 
         if (showYearPicker) {
             AlertDialog(
@@ -622,25 +639,18 @@ fun SettingsScreen(
             )
         }
 
-        Spacer(Modifier.height(12.dp))
-        Text("About", style = MaterialTheme.typography.labelLarge, color = CatSubtext0)
-
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = CatSurface0)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("BillMinder v2.2.0", style = MaterialTheme.typography.titleMedium, color = CatText)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Never miss a payment. Track bills, get reminders, visualize spending.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = CatSubtext0
-                )
-            }
+        SectionHeading("About")
+        GroupedSurface(contentPadding = PaddingValues(16.dp)) {
+            Text("BillMinder v2.3.0", style = MaterialTheme.typography.titleMedium, color = CatText)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Private bill tracking, practical reminders, and clear spending insights.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = CatSubtext0
+            )
         }
 
-        Spacer(Modifier.height(80.dp))
+        Spacer(Modifier.height(28.dp))
     }
 }
 
@@ -651,23 +661,16 @@ private fun SettingsRow(
     subtitle: String,
     onClick: () -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = CatSurface0)
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+    Column {
+        SettingsStyleRow(
+            icon = icon,
+            title = title,
+            subtitle = subtitle,
+            onClick = onClick
         ) {
-            Icon(icon, null, tint = CatBlue, modifier = Modifier.size(24.dp))
-            Spacer(Modifier.width(14.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium, color = CatText)
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = CatSubtext0)
-            }
             Icon(Icons.Filled.ChevronRight, null, tint = CatOverlay0)
         }
+        GroupDivider()
     }
 }
 
@@ -679,31 +682,15 @@ private fun SettingsToggle(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = CatSurface0)
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+    Column {
+        SettingsStyleRow(
+            icon = icon,
+            title = title,
+            subtitle = subtitle
         ) {
-            Icon(icon, null, tint = CatBlue, modifier = Modifier.size(24.dp))
-            Spacer(Modifier.width(14.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium, color = CatText)
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = CatSubtext0)
-            }
-            Switch(
-                checked = checked,
-                onCheckedChange = onCheckedChange,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = CatCrust,
-                    checkedTrackColor = CatBlue,
-                    uncheckedThumbColor = CatOverlay0,
-                    uncheckedTrackColor = CatSurface1
-                )
-            )
+            SquareToggle(checked = checked, onCheckedChange = onCheckedChange)
         }
+        GroupDivider()
     }
 }
 

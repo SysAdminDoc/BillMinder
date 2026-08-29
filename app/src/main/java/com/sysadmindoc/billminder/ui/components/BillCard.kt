@@ -1,23 +1,41 @@
 package com.sysadmindoc.billminder.ui.components
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.*
-import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ChildCare
+import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.LocalHospital
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.Receipt
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.outlined.RadioButtonUnchecked
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -25,10 +43,18 @@ import androidx.compose.ui.unit.sp
 import com.sysadmindoc.billminder.data.BillCategory
 import com.sysadmindoc.billminder.data.CurrencyFormatter
 import com.sysadmindoc.billminder.data.HolidayCalendar
-import com.sysadmindoc.billminder.ui.theme.*
+import com.sysadmindoc.billminder.ui.theme.CatBlue
+import com.sysadmindoc.billminder.ui.theme.CatGreen
+import com.sysadmindoc.billminder.ui.theme.CatRed
+import com.sysadmindoc.billminder.ui.theme.CatSubtext0
+import com.sysadmindoc.billminder.ui.theme.CatSurfaceRaised
+import com.sysadmindoc.billminder.ui.theme.CatText
+import com.sysadmindoc.billminder.ui.theme.CatYellow
+import com.sysadmindoc.billminder.ui.theme.storedBillColor
 import com.sysadmindoc.billminder.viewmodel.BillWithStatus
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -36,156 +62,137 @@ fun BillCard(
     billWithStatus: BillWithStatus,
     onTap: () -> Unit,
     onMarkPaid: () -> Unit,
-    onLongPressPaid: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onLongPressPaid: (() -> Unit)? = null
 ) {
     val bill = billWithStatus.bill
-    val billColor = Color(bill.color)
-    val dateFormat = SimpleDateFormat("MMM d", Locale.getDefault())
+    val billColor = storedBillColor(bill.color)
+    val monthFormat = SimpleDateFormat("MMM", Locale.getDefault())
+    val dayFormat = SimpleDateFormat("d", Locale.getDefault())
+    val dueDate = Date(billWithStatus.nextDueDate)
+    val holidayNote = if (!billWithStatus.isPaidThisCycle && !billWithStatus.isOverdue) {
+        HolidayCalendar.getHolidayNote(billWithStatus.nextDueDate)
+    } else {
+        null
+    }
+    val stateColor = when {
+        billWithStatus.isPaidThisCycle -> CatGreen
+        billWithStatus.isOverdue -> CatRed
+        billWithStatus.daysUntilDue <= 1 -> CatYellow
+        else -> CatBlue
+    }
+    val dueText = when {
+        billWithStatus.isPaidThisCycle -> "Paid"
+        billWithStatus.isOverdue -> "${-billWithStatus.daysUntilDue} days overdue"
+        billWithStatus.daysUntilDue == 0 -> "Today"
+        billWithStatus.daysUntilDue == 1 -> "Tomorrow"
+        else -> monthFormat.format(dueDate) + " " + dayFormat.format(dueDate)
+    }
 
-    val bgColor by animateColorAsState(
-        targetValue = when {
-            billWithStatus.isPaidThisCycle -> CatSurface0.copy(alpha = 0.5f)
-            billWithStatus.isOverdue -> CatRed.copy(alpha = 0.1f)
-            billWithStatus.daysUntilDue <= 3 -> CatYellow.copy(alpha = 0.08f)
-            else -> CatSurface0
-        },
-        label = "cardBg"
-    )
-
-    Card(
+    Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onTap),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = bgColor)
+            .heightIn(min = 76.dp)
+            .background(CatSurfaceRaised)
+            .combinedClickable(onClick = onTap)
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier.width(40.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Category icon
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(billColor.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
+            Text(
+                monthFormat.format(dueDate).uppercase(Locale.getDefault()),
+                color = stateColor,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                dayFormat.format(dueDate),
+                color = stateColor,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+
+        Spacer(Modifier.width(8.dp))
+        IconWell(
+            icon = getCategoryIcon(bill.category),
+            contentDescription = bill.category.label,
+            tint = billColor,
+            modifier = Modifier.size(40.dp)
+        )
+        Spacer(Modifier.width(12.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = bill.name,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = if (billWithStatus.isPaidThisCycle) CatSubtext0 else CatText,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.size(2.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = getCategoryIcon(bill.category),
-                    contentDescription = null,
-                    tint = billColor,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-
-            Spacer(Modifier.width(14.dp))
-
-            // Info
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = bill.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = if (billWithStatus.isPaidThisCycle) CatSubtext0 else CatText,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                    if (bill.isAutoPay) {
-                        Spacer(Modifier.width(6.dp))
-                        Surface(
-                            shape = RoundedCornerShape(4.dp),
-                            color = CatGreen.copy(alpha = 0.15f)
-                        ) {
-                            Text(
-                                "AUTO",
-                                color = CatGreen,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
-                            )
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(2.dp))
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    val holidayNote = if (!billWithStatus.isPaidThisCycle && !billWithStatus.isOverdue) {
-                        HolidayCalendar.getHolidayNote(billWithStatus.nextDueDate)
-                    } else null
-                    val dueText = when {
-                        billWithStatus.isPaidThisCycle -> "Paid"
-                        billWithStatus.isOverdue -> "Overdue ${-billWithStatus.daysUntilDue}d"
-                        billWithStatus.daysUntilDue == 0 -> "Due today"
-                        billWithStatus.daysUntilDue == 1 -> "Due tomorrow"
-                        else -> "Due ${dateFormat.format(Date(billWithStatus.nextDueDate))}"
-                    }
-                    val dueColor = when {
-                        billWithStatus.isPaidThisCycle -> CatGreen
-                        billWithStatus.isOverdue -> CatRed
-                        billWithStatus.daysUntilDue <= 3 -> CatYellow
-                        else -> CatSubtext0
-                    }
-                    Text(
-                        text = dueText,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = dueColor
-                    )
-                    Text(
-                        text = " | ${bill.recurrence.label}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = CatOverlay0
-                    )
-                    if (holidayNote != null) {
-                        Spacer(Modifier.width(4.dp))
-                        Icon(
-                            Icons.Filled.Warning,
-                            contentDescription = holidayNote,
-                            tint = CatYellow,
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
-                }
-            }
-
-            // Amount + pay button
-            Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    text = CurrencyFormatter.format(bill.amount, bill.currency),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = if (billWithStatus.isPaidThisCycle) CatSubtext0 else CatText
+                    if (bill.isAutoPay) "AUTO-PAY" else bill.recurrence.label.uppercase(Locale.getDefault()),
+                    color = if (bill.isAutoPay) CatBlue else CatSubtext0,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold
                 )
-                if (bill.isVariableAmount && bill.amountMin != null && bill.amountMax != null) {
-                    Text(
-                        text = "${CurrencyFormatter.format(bill.amountMin, bill.currency)}-${CurrencyFormatter.format(bill.amountMax, bill.currency)}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = CatOverlay0
-                    )
-                }
-                Spacer(Modifier.height(4.dp))
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .combinedClickable(
-                            onClick = onMarkPaid,
-                            onLongClick = onLongPressPaid
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
+                if (holidayNote != null) {
                     Icon(
-                        imageVector = if (billWithStatus.isPaidThisCycle)
-                            Icons.Filled.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
-                        contentDescription = if (billWithStatus.isPaidThisCycle) "Unmark paid" else "Mark paid",
-                        tint = if (billWithStatus.isPaidThisCycle) CatGreen else CatOverlay0,
-                        modifier = Modifier.size(26.dp)
+                        Icons.Filled.Warning,
+                        holidayNote,
+                        tint = CatYellow,
+                        modifier = Modifier.size(13.dp)
                     )
                 }
             }
+            Text(
+                dueText,
+                color = stateColor,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1
+            )
+        }
+
+        Spacer(Modifier.width(8.dp))
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                CurrencyFormatter.format(bill.amount, bill.currency),
+                color = if (billWithStatus.isPaidThisCycle) CatSubtext0 else CatText,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Bold
+            )
+            if (bill.isVariableAmount && bill.amountMin != null && bill.amountMax != null) {
+                Text(
+                    "${CurrencyFormatter.format(bill.amountMin, bill.currency)} to ${CurrencyFormatter.format(bill.amountMax, bill.currency)}",
+                    color = CatSubtext0,
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
+        }
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .combinedClickable(
+                    onClick = onMarkPaid,
+                    onLongClick = onLongPressPaid
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                if (billWithStatus.isPaidThisCycle) Icons.Filled.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
+                if (billWithStatus.isPaidThisCycle) "Unmark paid" else "Mark paid",
+                tint = if (billWithStatus.isPaidThisCycle) CatGreen else CatBlue,
+                modifier = Modifier.size(28.dp)
+            )
         }
     }
 }

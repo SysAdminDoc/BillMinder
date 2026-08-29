@@ -1,89 +1,99 @@
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-2.2.1-58A6FF?style=for-the-badge">
+  <img alt="Version" src="https://img.shields.io/badge/version-2.3.0-58A6FF?style=for-the-badge">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-4ade80?style=for-the-badge">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Android-58A6FF?style=for-the-badge">
 </p>
 
-# BillMinder v2.2.1
+# BillMinder v2.3.0
 
 A bill tracking and reminder app for Android. Never miss a payment again.
+
+## Screenshots
+
+| Home | Calendar | Insights |
+| --- | --- | --- |
+| ![Home dashboard](docs/screenshots/v2.3.0/home.png) | ![Monthly calendar](docs/screenshots/v2.3.0/calendar.png) | ![Spending insights](docs/screenshots/v2.3.0/insights.png) |
+
+| Add bill | Bill details | Settings |
+| --- | --- | --- |
+| ![Add bill form](docs/screenshots/v2.3.0/add-bill.png) | ![Bill details](docs/screenshots/v2.3.0/bill-detail.png) | ![Settings](docs/screenshots/v2.3.0/settings.png) |
 
 ## Features
 
 ### Core
-- **Bill Management** - Add, edit, delete bills with name, amount, due date, category, recurrence, notes, tags, and payment URL
-- **13 Categories** - Rent, Utilities, Insurance, Phone/Internet, Subscription, Loan, Medical, Transportation, Groceries, Education, Entertainment, Childcare, Other
-- **6 Recurrence Types** - Weekly, Bi-Weekly, Monthly, Quarterly, Yearly, One-Time
-- **Quick Mark Paid** - One-tap from home screen or notification
-- **Swipe-to-Delete** - Swipe left on any bill to delete
-- **Variable Amounts** - Track expected, minimum, and maximum amounts for utilities
-- **Split Bills** - Assign one bill across multiple payees with percentage share math
-- **Merchant Normalization** - Recognizes 400+ common statement aliases while preserving unknown names
-- **Multi-Currency** - Store each bill in its native currency, convert dashboard totals offline, and override FX rates manually
-- **Encrypted Receipt Attachments** - Attach an image or PDF when marking a payment paid; receipts stay encrypted in app-private storage
-- **Receipt OCR** - Read receipt images or the first PDF page locally to suggest the paid amount and date for review
-- **SMS Bill Proposals** - Opt-in local inbox scan that proposes one-time bills for user review
+- **Bill Management**: Add, edit, delete bills with name, amount, due date, category, recurrence, notes, tags, and payment URL
+- **13 Categories**: Rent, Utilities, Insurance, Phone/Internet, Subscription, Loan, Medical, Transportation, Groceries, Education, Entertainment, Childcare, Other
+- **6 Recurrence Types**: Weekly, Bi-Weekly, Monthly, Quarterly, Yearly, One-Time
+- **Quick Mark Paid**: One-tap from home screen or notification
+- **Swipe-to-Delete**: Swipe left on any bill to delete
+- **Variable Amounts**: Track expected, minimum, and maximum amounts for utilities
+- **Split Bills**: Assign one bill across multiple payees with percentage share math
+- **Merchant Normalization**: Recognizes 400+ common statement aliases while preserving unknown names
+- **Multi-Currency**: Store each bill in its native currency, convert dashboard totals offline, and override FX rates manually
+- **Encrypted Receipt Attachments**: Attach an image or PDF when marking a payment paid; receipts stay encrypted in app-private storage
+- **Receipt OCR**: Read receipt images or the first PDF page locally to suggest the paid amount and date for review
+- **SMS Bill Proposals**: Opt-in local inbox scan that proposes one-time bills for user review
 
 ### Reminders (Alarm-Style)
-- **Exact Alarms** - Uses AlarmManager.setAlarmClock() for reliable delivery (same as alarm clock apps)
-- **7 Reminder Timings** - Day of, 1/2/3 days, 1/2 weeks, 1 month before
-- **Dual Reminders** - Two separate reminders per bill
-- **Snooze** - 1 hour or tomorrow snooze directly from notification
-- **Boot Persistence** - Reminders survive device restarts
-- **Overdue Notifications** - Persistent (non-dismissible) for overdue bills
-- **Cascading Reminders** - Dismissed reminders escalate at 4 hours, 24 hours, and overdue
-- **Full-Screen Alarm Option** - Opt-in alarm-style due screen with mark-paid, snooze, and dismiss actions
-- **Home Geofence** - Opt-in enter-and-dwell reminders around a configurable home radius (Play flavor)
-- **Vacation Mode** - Pause reminders for auto-pay bills while keeping manual-payment reminders active
-- **Calendar Handoff** - Add the next due date as an optional all-day event, including recurrence, to the user's calendar app
+- **Exact Alarms**: Uses AlarmManager.setAlarmClock() for reliable delivery (same as alarm clock apps)
+- **7 Reminder Timings**: Day of, 1/2/3 days, 1/2 weeks, 1 month before
+- **Dual Reminders**: Two separate reminders per bill
+- **Snooze**: 1 hour or tomorrow snooze directly from notification
+- **Boot Persistence**: Reminders survive device restarts
+- **Overdue Notifications**: Persistent (non-dismissible) for overdue bills
+- **Cascading Reminders**: Dismissed reminders escalate at 4 hours, 24 hours, and overdue
+- **Full-Screen Alarm Option**: Opt-in alarm-style due screen with mark-paid, snooze, and dismiss actions
+- **Home Geofence**: Opt-in enter-and-dwell reminders around a configurable home radius (Play flavor)
+- **Vacation Mode**: Pause reminders for auto-pay bills while keeping manual-payment reminders active
+- **Calendar Handoff**: Add the next due date as an optional all-day event, including recurrence, to the user's calendar app
 
 ### Dashboard
-- **Monthly Summary** - Total due, paid, remaining with animated progress bar
-- **Section Badges** - Overdue/Upcoming/Paid sections with count badges
-- **Search** - Full-text search across bill names, notes, and tags
-- **Sort** - By due date, amount, name, or category
-- **Filter** - Horizontal scrollable category filter chips
-- **Staggered Animations** - Bills animate in sequentially
+- **Monthly Summary**: Total due, paid, remaining with animated progress bar
+- **Section Badges**: Overdue/Upcoming/Paid sections with count badges
+- **Search**: Full-text search across bill names, notes, and tags
+- **Sort**: By due date, amount, name, or category
+- **Filter**: Horizontal scrollable category filter chips
+- **Staggered Animations**: Bills animate in sequentially
 
 ### Calendar
-- **Monthly Calendar View** - Color-coded dots for bills on each day
-- **Day Detail** - Tap any day to see bills due
+- **Monthly Calendar View**: Color-coded dots for bills on each day
+- **Day Detail**: Tap any day to see bills due
 
 ### Stats & Charts
-- **Lifetime Spending** - Total across all bills
-- **Category Pie Chart** - Animated donut chart with legend
-- **Monthly Trend** - 6-month line chart with grid
-- **12-Month Plan** - Diverging paid-versus-outstanding view for upcoming bill cycles
-- **Category Budgets** - Set monthly caps per category and track them with progress rings
-- **Forecast** - 30/60/90-day upcoming totals
-- **What-If Planning** - Toggle recurring bills to preview annual savings
-- **Per-Bill Lifetime** - Total spent on each individual bill with average
+- **Lifetime Spending**: Total across all bills
+- **Category Pie Chart**: Animated donut chart with legend
+- **Monthly Trend**: 6-month line chart with grid
+- **12-Month Plan**: Diverging paid-versus-outstanding view for upcoming bill cycles
+- **Category Budgets**: Set monthly caps per category and track them with progress rings
+- **Forecast**: 30/60/90-day upcoming totals
+- **What-If Planning**: Toggle recurring bills to preview annual savings
+- **Per-Bill Lifetime**: Total spent on each individual bill with average
 
 ### Data
-- **JSON Backup/Restore** - Full export and import of all data
-- **CSV Export** - Payment history as spreadsheet
-- **CSV Import** - Preview a spreadsheet, map columns, learn repeated corrections after three confirmations, and import bills with optional payment history
-- **Migration Presets** - One-step column mappings for Mint, Tiller, and Empower transaction exports
-- **Year-End Export** - Tax-ready CSV grouped by category
-- **Currency-Aware Exports** - JSON and CSV preserve bill/payment currency codes
-- **Interchange Exports** - Generate Bluecoins advanced CSV, YNAB outflow/inflow CSV, or Actual Budget transaction CSV
-- **Room Database** - SQLite with migration support
+- **JSON Backup/Restore**: Full export and import of all data
+- **CSV Export**: Payment history as spreadsheet
+- **CSV Import**: Preview a spreadsheet, map columns, learn repeated corrections after three confirmations, and import bills with optional payment history
+- **Migration Presets**: One-step column mappings for Mint, Tiller, and Empower transaction exports
+- **Year-End Export**: Tax-ready CSV grouped by category
+- **Currency-Aware Exports**: JSON and CSV preserve bill/payment currency codes
+- **Interchange Exports**: Generate Bluecoins advanced CSV, YNAB outflow/inflow CSV, or Actual Budget transaction CSV
+- **Room Database**: SQLite with migration support
 
 ### Security
-- **Biometric Lock** - Fingerprint/face unlock to protect financial data
-- **PIN Fallback** - Salted PIN fallback with configurable auto-lock, screenshot protection, and duress mode
+- **Biometric Lock**: Fingerprint/face unlock to protect financial data
+- **PIN Fallback**: Salted PIN fallback with configurable auto-lock, screenshot protection, and duress mode
 
 ### Widget
-- **Home Screen Widget** - Glance-based widget showing upcoming bills, amounts, and days until due
-- **Widget Variants** - Next 3 bills and current-month payment progress widgets
-- **Wear OS Tile** - Shows the next unpaid bill and sends a one-tap mark-paid action back to the phone through the Wear Data Layer (Play flavor)
-- **Lock-Screen Widget** - Keyguard-capable compact due reminder that omits amounts for privacy
+- **Home Screen Widget**: Glance-based widget showing upcoming bills, amounts, and days until due
+- **Widget Variants**: Next 3 bills and current-month payment progress widgets
+- **Wear OS Tile**: Shows the next unpaid bill and sends a one-tap mark-paid action back to the phone through the Wear Data Layer (Play flavor)
+- **Lock-Screen Widget**: Keyguard-capable compact due reminder that omits amounts for privacy
 
 ### UI/UX
-- **Bottom Navigation** - Home, Calendar, Stats, Settings tabs
-- **AMOLED Dark Theme** - Catppuccin Mocha throughout
-- **Edge-to-Edge** - Full immersive display
-- **Auto-Pay Tags** - Visual badge on auto-pay bills
+- **Bottom Navigation**: Home, Calendar, Stats, Settings tabs
+- **AMOLED Dark Theme**: Catppuccin Mocha throughout
+- **Edge-to-Edge**: Full immersive display
+- **Auto-Pay Tags**: Visual badge on auto-pay bills
 
 ## Tech Stack
 

@@ -10,6 +10,8 @@ val CatSurface0 = Color(0xFF313244)
 val CatSurface1 = Color(0xFF45475A)
 val CatSurface2 = Color(0xFF585B70)
 val CatOverlay0 = Color(0xFF6C7086)
+val CatDivider = Color(0xFF383A4C)
+val CatSurfaceRaised = Color(0xFF202132)
 val CatText = Color(0xFFCDD6F4)
 val CatSubtext0 = Color(0xFFA6ADC8)
 val CatSubtext1 = Color(0xFFBAC2DE)
@@ -31,3 +33,6 @@ val CategoryColors = listOf(
     CatBlue, CatYellow, CatGreen, CatPeach, CatMauve,
     CatPink, CatTeal, CatSapphire, CatFlamingo, CatLavender
 )
+
+fun storedBillColor(value: Long): Color =
+    if (value ushr 32 == 0L) Color(value.toInt()) else Color(value)

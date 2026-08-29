@@ -11,8 +11,23 @@ android {
         applicationId = "com.sysadmindoc.billminder.wear"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "2.2.1"
+        versionCode = 7
+        versionName = "2.3.0"
+    }
+
+    signingConfigs {
+        create("release") {
+            storeFile = file("${rootProject.projectDir}/billminder.jks")
+            storePassword = "billminder2025"
+            keyAlias = "billminder"
+            keyPassword = "billminder2025"
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.getByName("release")
+        }
     }
 
     compileOptions {
