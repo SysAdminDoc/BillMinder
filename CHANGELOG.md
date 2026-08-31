@@ -4,6 +4,7 @@ All notable changes to BillMinder will be documented in this file.
 
 ## [Unreleased]
 
+- The README now lists every permission the app declares and what each one is for, states that reminders fire at 9:00 local time, and describes what happens when exact alarms are unavailable.
 - BillMinder now ships as one build with every feature in it. The SMS scan, the alarm-style full-screen reminder, and exact-alarm auto-grant used to sit behind a separate flavor and are now part of the only APK the project releases.
 - Removed the Wear OS companion module and all phone-side watch synchronization. The watch tile was never usable because the two modules shipped under different application IDs, and the app no longer carries the Play services wearable, tiles, or protolayout libraries.
 - Dropped the unused Play services location library. Home geofencing was removed earlier, so nothing referenced it.

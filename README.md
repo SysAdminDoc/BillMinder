@@ -28,7 +28,9 @@ The Home page has search, category filters, due-state groups, and one-tap paymen
 
 ## Reminders
 
-BillMinder schedules two optional reminders per bill. Available timing ranges from the due day to one month ahead. Exact delivery is used when Android allows it, with a documented fallback when exact alarms are unavailable.
+BillMinder schedules two optional reminders per bill, and reminders fire at 9:00 in your local time zone. Available timing ranges from the due day to one month ahead.
+
+The app declares `USE_EXACT_ALARM`, so Android 12 and newer grant exact alarms without a settings trip. If exact alarms are ever unavailable the reminder still runs, scheduled as a wake-up alarm that Doze is allowed to delay, so it can arrive late rather than not at all. Settings shows the live permission state.
 
 Notifications include Paid, one-hour snooze, and tomorrow actions. Unpaid bills get a separate overdue alert. Reminders are rebuilt after a reboot, app update, clock change, or timezone change.
 
@@ -43,7 +45,21 @@ There is also an optional alarm-style due screen and an opt-in local scan of rec
 - Private Notifications & Widgets replaces bill names and amounts on external surfaces. Hide Amounts in App masks financial values throughout the read-only UI.
 - Receipt images and PDFs stay encrypted in app-private storage. OCR runs on the device with the bundled ML Kit model.
 
-The app declares no internet or location permission. It has no analytics SDK, crash reporter, billing library, or bank connection.
+The app declares no internet or location permission, and it makes no network calls: the OCR model ships inside the APK. There is no analytics SDK, crash reporter, billing library, or bank connection.
+
+Everything it does declare, and why:
+
+| Permission | Used for |
+| --- | --- |
+| `POST_NOTIFICATIONS` | Bill reminders and overdue alerts. |
+| `SCHEDULE_EXACT_ALARM`, `USE_EXACT_ALARM` | Firing a reminder at its scheduled minute. |
+| `USE_FULL_SCREEN_INTENT` | The optional alarm-style due screen. Off until you turn it on. |
+| `READ_SMS` | The optional local scan of recent payment texts. Off until you turn it on, and requested only at that point. Messages are read on the device and nothing about them leaves it. |
+| `RECEIVE_BOOT_COMPLETED` | Rebuilding alarms after a restart. |
+| `VIBRATE`, `WAKE_LOCK` | Delivering a reminder on a sleeping device. |
+| `USE_BIOMETRIC` | Fingerprint and face unlock for the app lock. |
+
+`ManifestPermissionsTest` fails the build if the merged manifest gains anything outside that set, loses one the app depends on, or picks up a network or location permission from a library.
 
 ## Data and portability
 
