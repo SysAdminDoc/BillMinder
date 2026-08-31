@@ -14,6 +14,9 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.security.KeyStore
 import java.security.SecureRandom
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.UUID
 import javax.crypto.Cipher
 import javax.crypto.CipherInputStream
@@ -89,6 +92,74 @@ object EncryptedAttachmentStore {
         } catch (_: Exception) {
             output.delete()
             null
+        }
+    }
+
+    /** Decrypts one stored receipt into a caller-owned temporary file for portable backup. */
+    internal suspend fun exportPlaintextTo(
+        context: Context,
+        attachmentFile: String,
+        target: File
+    ): Long = withContext(Dispatchers.IO) {
+        val source = safeAttachmentFile(context, attachmentFile)
+            ?: throw IOException("Unsafe receipt file name")
+        if (!source.isFile) throw IOException("Receipt file is missing")
+        target.parentFile?.mkdirs()
+        try {
+            FileInputStream(source).use { rawInput ->
+                val iv = ByteArray(IV_LENGTH)
+                readFully(rawInput, iv)
+                val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
+                    init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(TAG_LENGTH_BITS, iv))
+                }
+                CipherInputStream(rawInput, cipher).use { decryptedInput ->
+                    FileOutputStream(target).use { output -> copyBounded(decryptedInput, output) }
+                }
+            }
+            target.length()
+        } catch (error: Exception) {
+            target.delete()
+            throw IOException("Receipt could not be decrypted", error)
+        }
+    }
+
+    /** Encrypts restored plaintext into a prepared file that is not yet live. */
+    internal suspend fun prepareRestoreFile(
+        context: Context,
+        plaintext: File,
+        target: File
+    ) = withContext(Dispatchers.IO) {
+        require(plaintext.isFile) { "Restored receipt is missing" }
+        target.parentFile?.mkdirs()
+        try {
+            FileInputStream(plaintext).use { source ->
+                val iv = ByteArray(IV_LENGTH).also(SecureRandom()::nextBytes)
+                val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
+                    init(Cipher.ENCRYPT_MODE, getOrCreateKey(), GCMParameterSpec(TAG_LENGTH_BITS, iv))
+                }
+                FileOutputStream(target).use { rawOutput ->
+                    rawOutput.write(iv)
+                    CipherOutputStream(rawOutput, cipher).use { output -> copyBounded(source, output) }
+                }
+            }
+        } catch (error: Exception) {
+            target.delete()
+            throw IOException("Receipt could not be prepared for restore", error)
+        }
+    }
+
+    internal fun newStoredName(): String = "${UUID.randomUUID()}.bin"
+
+    /** Atomically makes one fully prepared encrypted receipt visible to the live database. */
+    internal fun installPrepared(context: Context, prepared: File, storedName: String) {
+        check(isSafeStoredName(storedName)) { "Unsafe receipt file name" }
+        val directory = File(context.filesDir, ATTACHMENT_DIRECTORY).apply { mkdirs() }.canonicalFile
+        val target = File(directory, storedName).canonicalFile
+        check(target.parentFile == directory && !target.exists()) { "Receipt destination is invalid" }
+        try {
+            Files.move(prepared.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
+        } catch (_: AtomicMoveNotSupportedException) {
+            Files.move(prepared.toPath(), target.toPath())
         }
     }
 

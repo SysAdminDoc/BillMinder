@@ -4,6 +4,12 @@ All notable changes to BillMinder will be documented in this file.
 
 ## [Unreleased]
 
+- Added encrypted `.bmbak` backups that carry bills, cycle payments, split payees, supported settings, and receipt bytes in one portable file.
+- Backup files now have a documented schema, authenticated header, entry checksums, streaming size limits, and a preview before restore.
+- Restore can merge or replace data. Validation and database failures leave current records unchanged, restore prior preferences, and remove staged receipt files.
+- Restored receipts get fresh encryption from the destination device. Older partial JSON files remain available through a separate compatibility import.
+- Disabled Android app-data backup because its device transfer cannot move the Android Keystore key needed to open receipt ciphertext.
+- Refreshed the Settings screenshot to show the new backup and compatibility controls.
 - App-lock settings now take effect immediately, including screenshot protection, without requiring an app restart.
 - PINs now use a versioned PBKDF2 record with automatic migration from earlier formats. Repeated failures trigger an escalating delay that survives restarts.
 - Biometric unlock always keeps a PIN fallback, and successful authentication clears the failed-attempt delay.

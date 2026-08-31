@@ -2,6 +2,7 @@ package com.sysadmindoc.billminder.viewmodel
 
 import android.app.Application
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.sysadmindoc.billminder.data.*
@@ -526,21 +527,107 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
 
     suspend fun getOnTimeStreak(billId: Long): Int = repo.getOnTimeStreak(billId)
 
-    // Backup/restore
-    fun exportJson(uri: Uri) {
+    // Portable backup/restore
+    fun exportBackup(
+        uri: Uri,
+        passphrase: String,
+        onComplete: (BackupExportResult?, String?) -> Unit
+    ) {
+        val secret = passphrase.toCharArray()
         viewModelScope.launch {
-            BackupManager.exportJson(getApplication(), uri, repo)
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    BackupManager.exportBundle(getApplication(), uri, repo, secret)
+                }
+                onComplete(result, null)
+            } catch (error: Exception) {
+                onComplete(null, error.message ?: "Backup could not be exported")
+            } finally {
+                secret.fill('\u0000')
+            }
         }
     }
 
-    fun importJson(uri: Uri, onComplete: (Int) -> Unit) {
+    fun previewBackup(
+        uri: Uri,
+        passphrase: String,
+        onComplete: (BackupPreview?, String?) -> Unit
+    ) {
+        val secret = passphrase.toCharArray()
         viewModelScope.launch {
-            val count = BackupManager.importJson(getApplication(), uri, repo)
-            val bills = repo.getAllBillsList()
-            ReminderScheduler.scheduleAllReminders(getApplication(), bills)
-            refreshExternalSurfaces()
-            loadChartData()
-            onComplete(count)
+            try {
+                val preview = withContext(Dispatchers.IO) {
+                    BackupManager.previewBundle(getApplication(), uri, secret)
+                }
+                onComplete(preview, null)
+            } catch (error: Exception) {
+                onComplete(null, error.message ?: "Backup could not be opened")
+            } finally {
+                secret.fill('\u0000')
+            }
+        }
+    }
+
+    fun restoreBackup(
+        uri: Uri,
+        passphrase: String,
+        policy: BackupRestorePolicy,
+        onComplete: (BackupRestoreResult?, String?) -> Unit
+    ) {
+        val secret = passphrase.toCharArray()
+        viewModelScope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    BackupManager.restoreBundle(getApplication(), uri, repo, secret, policy)
+                }
+                val followUpFailures = mutableListOf<Throwable>()
+                runCatching {
+                    _displayCurrency.value = CurrencyPrefs.getDisplayCurrency(getApplication())
+                    _currencySettingsRevision.value++
+                }.onFailure(followUpFailures::add)
+                runCatching {
+                    ReminderScheduler.scheduleAllReminders(getApplication(), repo.getAllBillsList())
+                }.onFailure(followUpFailures::add)
+                runCatching {
+                    if (com.sysadmindoc.billminder.security.SecurityPrefs.maskExternalContent(getApplication())) {
+                        NotificationHelper.cancelDisplayed(getApplication())
+                    }
+                }.onFailure(followUpFailures::add)
+                runCatching {
+                    refreshExternalSurfaces()
+                }.onFailure(followUpFailures::add)
+                runCatching { loadChartData() }.onFailure(followUpFailures::add)
+                followUpFailures.forEach {
+                    Log.w("BillMinderBackup", "Post-restore refresh failed", it)
+                }
+                val warning = if (followUpFailures.isEmpty()) null else {
+                    "Backup restored, but some reminders or external views may refresh after the app restarts"
+                }
+                onComplete(result, warning)
+            } catch (error: Exception) {
+                onComplete(null, error.message ?: "Backup could not be restored")
+            } finally {
+                secret.fill('\u0000')
+            }
+        }
+    }
+
+    fun importLegacyBackup(
+        uri: Uri,
+        onComplete: (LegacyBackupImportResult?, String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    BackupManager.importLegacyJson(getApplication(), uri, repo)
+                }
+                ReminderScheduler.scheduleAllReminders(getApplication(), repo.getAllBillsList())
+                refreshExternalSurfaces()
+                loadChartData()
+                onComplete(result, null)
+            } catch (error: Exception) {
+                onComplete(null, error.message ?: "Older JSON backup could not be imported")
+            }
         }
     }
 

@@ -1,5 +1,6 @@
 package com.sysadmindoc.billminder.notification
 
+import android.annotation.SuppressLint
 import android.content.Context
 
 object ReminderPrefs {
@@ -20,6 +21,16 @@ object ReminderPrefs {
     fun setVacationMode(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(VACATION_MODE, enabled).apply()
     }
+
+    @SuppressLint("ApplySharedPref")
+    internal fun restoreFromBackup(
+        context: Context,
+        fullScreenEnabled: Boolean,
+        vacationMode: Boolean
+    ): Boolean = prefs(context).edit()
+        .putBoolean(FULL_SCREEN_ENABLED, fullScreenEnabled)
+        .putBoolean(VACATION_MODE, vacationMode)
+        .commit()
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

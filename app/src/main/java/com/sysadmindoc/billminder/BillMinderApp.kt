@@ -1,6 +1,7 @@
 package com.sysadmindoc.billminder
 
 import android.app.Application
+import com.sysadmindoc.billminder.data.BackupManager
 import com.sysadmindoc.billminder.data.BillDatabase
 import com.sysadmindoc.billminder.notification.NotificationHelper
 import com.sysadmindoc.billminder.security.EncryptedAttachmentStore
@@ -25,6 +26,7 @@ class BillMinderApp : Application() {
     private fun sweepReceiptFiles() {
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             runCatching {
+                BackupManager.clearTemporaryFiles(this@BillMinderApp)
                 EncryptedAttachmentStore.clearCache(this@BillMinderApp)
                 val referenced = BillDatabase.getDatabase(this@BillMinderApp)
                     .billDao()

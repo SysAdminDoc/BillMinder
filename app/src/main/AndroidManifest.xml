@@ -23,8 +23,10 @@
 
     <application
         android:name=".BillMinderApp"
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:enableOnBackInvokedCallback="true"
+        android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="BillMinder"
         android:roundIcon="@mipmap/ic_launcher_round"

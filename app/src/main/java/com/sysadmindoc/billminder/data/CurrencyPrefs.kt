@@ -1,5 +1,6 @@
 package com.sysadmindoc.billminder.data
 
+import android.annotation.SuppressLint
 import android.content.Context
 import java.util.Locale
 
@@ -42,9 +43,26 @@ object CurrencyPrefs {
         } else if (code in CurrencyConverter.bundledUsdRates) {
             rates[code] = rate
         }
-        val serialized = rates.toSortedMap().entries.joinToString(";") { "${it.key}=${it.value}" }
-        prefs(context).edit().putString(MANUAL_RATES, serialized).apply()
+        prefs(context).edit().putString(MANUAL_RATES, serializeRates(rates)).apply()
     }
+
+    @SuppressLint("ApplySharedPref")
+    internal fun restoreFromBackup(
+        context: Context,
+        displayCurrency: String,
+        manualRates: Map<String, Double>
+    ): Boolean = prefs(context).edit()
+        .putString(DISPLAY_CURRENCY, CurrencyCatalog.find(displayCurrency).code)
+        .putString(MANUAL_RATES, serializeRates(manualRates))
+        .commit()
+
+    private fun serializeRates(rates: Map<String, Double>): String = rates
+        .filter { (code, value) ->
+            code != "USD" && code in CurrencyConverter.bundledUsdRates && value.isFinite() && value > 0.0
+        }
+        .toSortedMap()
+        .entries
+        .joinToString(";") { "${it.key}=${it.value}" }
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

@@ -49,7 +49,11 @@ The app declares no internet or location permission. It has no analytics SDK, cr
 
 CSV import starts with a preview and supports learned column mappings plus Mint, Tiller, and Empower presets. Exports include payment CSV, year-end CSV, and formats for Bluecoins, YNAB, or Actual Budget.
 
-The current JSON path exports bills and payment history. It does not yet include settings, split payees, or receipt bytes, so it should not be treated as a complete device backup.
+Portable `.bmbak` files include bills, cycle payments, split payees, supported settings, and receipt bytes. Each file is protected with a user passphrase using PBKDF2-HMAC-SHA256 and AES-256-GCM. Restore checks the full file before showing a preview, then offers merge or replace. A bad passphrase, damaged file, duplicate record, or unsupported schema leaves current data unchanged.
+
+Older partial JSON backups from BillMinder 2.4.0 and earlier can still be imported. They contain bills and payments only. The [portable backup format](docs/BACKUP_FORMAT.md) documents the container, included settings, limits, and recovery behavior.
+
+Android's automatic app-data backup is disabled. Its device transfer can restore encrypted receipt files without their device-bound key, which would leave the files unreadable. Use an encrypted `.bmbak` file to move data between devices.
 
 Room stores the live data and has explicit migrations for every shipped schema. An unreadable database is left untouched and shown through the recovery screen.
 

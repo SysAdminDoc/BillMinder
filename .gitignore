@@ -17,6 +17,7 @@ billminder.jks
 # Markdown files local-only (except README)
 *.md
 !README.md
+!docs/BACKUP_FORMAT.md
 
 # AI config
 CODEX_CHANGELOG.md

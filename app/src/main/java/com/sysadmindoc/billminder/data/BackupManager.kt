@@ -3,66 +3,139 @@ package com.sysadmindoc.billminder.data
 import android.content.Context
 import android.net.Uri
 import com.google.gson.Gson
-import com.google.gson.GsonBuilder
 import com.sysadmindoc.billminder.domain.CycleEngine
-import java.io.BufferedReader
-import java.io.InputStreamReader
+import java.io.ByteArrayOutputStream
+import java.io.IOException
 
-data class BackupData(
-    val version: Int = 5,
-    val exportedAt: Long = System.currentTimeMillis(),
-    val bills: List<Bill>,
-    val payments: List<Payment>
+data class LegacyBackupData(
+    val version: Int? = null,
+    val bills: List<Bill>? = null,
+    val payments: List<Payment>? = null
 )
+
+data class LegacyBackupImportResult(val bills: Int, val payments: Int)
 
 object BackupManager {
 
-    private val gson: Gson = GsonBuilder().setPrettyPrinting().create()
+    private const val MAX_LEGACY_JSON_BYTES = 20L * 1024L * 1024L
 
-    suspend fun exportJson(context: Context, uri: Uri, repo: BillRepository) {
-        val bills = repo.getAllBillsForExport()
-        val payments = repo.getAllPaymentsForExport()
-        val backup = BackupData(bills = bills, payments = payments)
-        val json = gson.toJson(backup)
-        context.contentResolver.openOutputStream(uri)?.use { out ->
-            out.write(json.toByteArray(Charsets.UTF_8))
+    fun clearTemporaryFiles(context: Context) {
+        PortableBackupBundle.clearTemporaryFiles(context)
+    }
+
+    suspend fun exportBundle(
+        context: Context,
+        uri: Uri,
+        repo: BillRepository,
+        passphrase: CharArray
+    ): BackupExportResult {
+        try {
+            val output = context.contentResolver.openOutputStream(uri, "wt")
+                ?: throw IOException("The selected backup file could not be opened")
+            return output.use {
+                PortableBackupBundle.exportTo(context, it, repo, passphrase)
+            }
+        } catch (error: Exception) {
+            runCatching { context.contentResolver.delete(uri, null, null) }
+            throw error
         }
     }
 
-    suspend fun importJson(context: Context, uri: Uri, repo: BillRepository): Int {
-        val json = context.contentResolver.openInputStream(uri)?.use { input ->
-            BufferedReader(InputStreamReader(input, Charsets.UTF_8)).readText()
-        } ?: return 0
+    suspend fun previewBundle(
+        context: Context,
+        uri: Uri,
+        passphrase: CharArray
+    ): BackupPreview {
+        val input = context.contentResolver.openInputStream(uri)
+            ?: throw IOException("The selected backup file could not be opened")
+        return input.use { PortableBackupBundle.previewFrom(context, it, passphrase) }
+    }
 
-        val backup = gson.fromJson(json, BackupData::class.java)
-
-        // One transaction: a partly written restore would leave payments pointing at bills that
-        // never made it in.
-        return repo.inTransaction {
-            val billIdMap = mutableMapOf<Long, Long>()
-            var count = 0
-            backup.bills.forEach { bill ->
-                val normalized = bill.copy(
-                    id = 0,
-                    name = MerchantNormalizer.normalize(bill.name),
-                    currency = CurrencyCatalog.find(bill.currency).code
-                )
-                billIdMap[bill.id] = repo.insertBill(normalized)
-                count++
-            }
-            backup.payments.forEach { payment ->
-                val newBillId = billIdMap[payment.billId] ?: return@forEach
-                repo.insertPayment(
-                    payment.copy(
-                        id = 0,
-                        billId = newBillId,
-                        currency = CurrencyCatalog.find(payment.currency).code,
-                        cycleKey = payment.cycleKey.ifBlank { CycleEngine.cycleKeyForInstant(payment.dueDate) }
-                    )
-                )
-            }
-            count
+    suspend fun restoreBundle(
+        context: Context,
+        uri: Uri,
+        repo: BillRepository,
+        passphrase: CharArray,
+        policy: BackupRestorePolicy
+    ): BackupRestoreResult {
+        val input = context.contentResolver.openInputStream(uri)
+            ?: throw IOException("The selected backup file could not be opened")
+        return input.use {
+            PortableBackupBundle.restoreFrom(context, it, repo, passphrase, policy)
         }
+    }
+
+    /** Imports the incomplete JSON format written by BillMinder 2.4.0 and earlier. */
+    suspend fun importLegacyJson(
+        context: Context,
+        uri: Uri,
+        repo: BillRepository
+    ): LegacyBackupImportResult {
+        val input = context.contentResolver.openInputStream(uri)
+            ?: throw IOException("The selected JSON backup could not be opened")
+        val bytes = input.use { source ->
+            val output = ByteArrayOutputStream()
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            var copied = 0L
+            while (true) {
+                val count = source.read(buffer)
+                if (count < 0) break
+                copied += count
+                if (copied > MAX_LEGACY_JSON_BYTES) throw BackupException("Legacy backup exceeds 20 MB")
+                output.write(buffer, 0, count)
+            }
+            output.toByteArray()
+        }
+        val legacy = try {
+            Gson().fromJson(String(bytes, Charsets.UTF_8), LegacyBackupData::class.java)
+        } catch (error: Exception) {
+            throw BackupException("Legacy JSON backup is invalid", error)
+        } ?: throw BackupException("Legacy JSON backup is empty")
+        val version = legacy.version ?: 0
+        if (version !in 0..5) throw BackupException("Legacy backup version $version is not supported")
+        val bills = legacy.bills ?: throw BackupException("Legacy backup bills are missing")
+        val payments = legacy.payments ?: throw BackupException("Legacy backup payments are missing")
+        if (bills.size > 100_000 || payments.size > 100_000) {
+            throw BackupException("Legacy backup contains too many rows")
+        }
+        val billIds = bills.map(Bill::id)
+        if (billIds.any { it <= 0L } || billIds.toSet().size != billIds.size) {
+            throw BackupException("Legacy backup contains invalid or duplicate bill IDs")
+        }
+        val billIdSet = billIds.toSet()
+        bills.forEach { bill ->
+            if (bill.name.isBlank() || !bill.amount.isFinite() || bill.amount <= 0.0) {
+                throw BackupException("Legacy backup contains an invalid bill")
+            }
+        }
+        val paymentIds = payments.map(Payment::id)
+        if (paymentIds.any { it <= 0L } || paymentIds.toSet().size != paymentIds.size) {
+            throw BackupException("Legacy backup contains invalid or duplicate payment IDs")
+        }
+        val normalizedPayments = payments.map { payment ->
+            if (payment.billId !in billIdSet || !payment.amount.isFinite() || payment.amount <= 0.0) {
+                throw BackupException("Legacy backup contains an invalid payment")
+            }
+            payment.copy(
+                attachmentName = "",
+                attachmentFile = "",
+                attachmentMime = "application/octet-stream",
+                currency = CurrencyCatalog.find(payment.currency).code,
+                cycleKey = payment.cycleKey.ifBlank { CycleEngine.cycleKeyForInstant(payment.dueDate) }
+            )
+        }
+        if (normalizedPayments.map { it.billId to it.cycleKey }.toSet().size != normalizedPayments.size) {
+            throw BackupException("Legacy backup contains duplicate bill cycles")
+        }
+        val result = repo.restoreBackupGraph(
+            bills = bills.map { it.copy(currency = CurrencyCatalog.find(it.currency).code) },
+            payments = normalizedPayments,
+            payees = emptyList(),
+            policy = BackupRestorePolicy.MERGE,
+            attachmentNamesByPaymentId = emptyMap(),
+            beforeCommit = {}
+        )
+        return LegacyBackupImportResult(result.bills, result.payments)
     }
 
     suspend fun importCsv(

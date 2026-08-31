@@ -154,6 +154,16 @@ object SecurityPrefs {
         prefs(context).edit().putBoolean(KEY_HIDE_AMOUNTS_IN_APP, enabled).apply()
     }
 
+    @SuppressLint("ApplySharedPref")
+    internal fun restorePrivacyFromBackup(
+        context: Context,
+        maskExternalContent: Boolean,
+        hideAmountsInApp: Boolean
+    ): Boolean = prefs(context).edit()
+        .putBoolean(KEY_MASK_EXTERNAL_CONTENT, maskExternalContent)
+        .putBoolean(KEY_HIDE_AMOUNTS_IN_APP, hideAmountsInApp)
+        .commit()
+
     fun readState(context: Context): SecurityState = SecurityState(
         biometricEnabled = isBiometricEnabled(context),
         hasPin = hasPin(context),

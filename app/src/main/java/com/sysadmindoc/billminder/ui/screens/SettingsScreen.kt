@@ -29,6 +29,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.sysadmindoc.billminder.data.BillCategory
+import com.sysadmindoc.billminder.data.BackupPreview
+import com.sysadmindoc.billminder.data.BackupRestorePolicy
 import com.sysadmindoc.billminder.data.BudgetPrefs
 import com.sysadmindoc.billminder.data.CsvField
 import com.sysadmindoc.billminder.data.CurrencyCatalog
@@ -58,6 +60,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+private enum class BackupPassphrasePurpose { EXPORT, IMPORT }
+
 @Composable
 fun SettingsScreen(
     viewModel: BillViewModel,
@@ -82,6 +86,12 @@ fun SettingsScreen(
     // Read on every recomposition: any of these can be revoked from system settings at any time.
     val reminderPermissions = ReminderPermissions.read(context)
     var showSmsCandidates by remember { mutableStateOf(false) }
+    var backupPassphrasePurpose by remember { mutableStateOf<BackupPassphrasePurpose?>(null) }
+    var pendingExportPassphrase by remember { mutableStateOf("") }
+    var pendingImportUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingRestorePassphrase by remember { mutableStateOf("") }
+    var backupPreview by remember { mutableStateOf<BackupPreview?>(null) }
+    var backupBusyMessage by remember { mutableStateOf<String?>(null) }
 
     val smsPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -100,21 +110,57 @@ fun SettingsScreen(
         }
     }
 
-    val exportJsonLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/json")
+    val exportBackupLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream")
     ) { uri ->
-        uri?.let {
-            viewModel.exportJson(it)
-            Toast.makeText(context, "Backup exported", Toast.LENGTH_SHORT).show()
+        val passphrase = pendingExportPassphrase
+        pendingExportPassphrase = ""
+        if (uri != null && passphrase.isNotEmpty()) {
+            backupBusyMessage = "Encrypting backup"
+            viewModel.exportBackup(uri, passphrase) { result, error ->
+                backupBusyMessage = null
+                if (result != null) {
+                    Toast.makeText(
+                        context,
+                        "Encrypted backup saved with ${result.bills} bills and ${result.receipts} receipts",
+                        Toast.LENGTH_LONG
+                    ).show()
+                } else {
+                    Toast.makeText(context, error ?: "Backup could not be exported", Toast.LENGTH_LONG).show()
+                }
+            }
         }
     }
 
-    val importJsonLauncher = rememberLauncherForActivityResult(
+    val importBackupLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
-        uri?.let {
-            viewModel.importJson(it) { count ->
-                Toast.makeText(context, "Imported $count bills", Toast.LENGTH_SHORT).show()
+        pendingImportUri = uri
+        if (uri != null) {
+            backupPassphrasePurpose = BackupPassphrasePurpose.IMPORT
+        }
+    }
+
+    val importLegacyJsonLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            backupBusyMessage = "Importing older JSON backup"
+            viewModel.importLegacyBackup(uri) { result, error ->
+                backupBusyMessage = null
+                if (result != null) {
+                    Toast.makeText(
+                        context,
+                        "Imported ${result.bills} bills and ${result.payments} payments",
+                        Toast.LENGTH_LONG
+                    ).show()
+                } else {
+                    Toast.makeText(
+                        context,
+                        error ?: "Older JSON backup could not be imported",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
             }
         }
     }
@@ -178,6 +224,65 @@ fun SettingsScreen(
         uri?.let {
             viewModel.exportYearEndCsv(it, yearEndYear)
             Toast.makeText(context, "$yearEndYear year-end report exported", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun submitBackupPassphrase(purpose: BackupPassphrasePurpose, passphrase: String) {
+        backupPassphrasePurpose = null
+        when (purpose) {
+            BackupPassphrasePurpose.EXPORT -> {
+                pendingExportPassphrase = passphrase
+                exportBackupLauncher.launch("billminder_backup.bmbak")
+            }
+            BackupPassphrasePurpose.IMPORT -> {
+                val uri = pendingImportUri ?: return
+                pendingRestorePassphrase = passphrase
+                backupBusyMessage = "Checking backup"
+                viewModel.previewBackup(uri, passphrase) { preview, error ->
+                    backupBusyMessage = null
+                    if (preview != null) {
+                        backupPreview = preview
+                    } else {
+                        pendingRestorePassphrase = ""
+                        pendingImportUri = null
+                        Toast.makeText(
+                            context,
+                            error ?: "Backup could not be opened",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            }
+        }
+    }
+
+    fun restorePreviewedBackup(policy: BackupRestorePolicy) {
+        val uri = pendingImportUri ?: return
+        val passphrase = pendingRestorePassphrase
+        if (passphrase.isEmpty()) return
+        backupPreview = null
+        backupBusyMessage = if (policy == BackupRestorePolicy.MERGE) {
+            "Merging backup"
+        } else {
+            "Replacing current data"
+        }
+        viewModel.restoreBackup(uri, passphrase, policy) { result, error ->
+            backupBusyMessage = null
+            pendingRestorePassphrase = ""
+            pendingImportUri = null
+            if (result != null) {
+                fullScreenReminders = ReminderPrefs.isFullScreenEnabled(context)
+                vacationMode = ReminderPrefs.isVacationMode(context)
+                val action = if (result.policy == BackupRestorePolicy.MERGE) "Merged" else "Restored"
+                Toast.makeText(
+                    context,
+                    "$action ${result.bills} bills, ${result.payments} payments, and ${result.receipts} receipts",
+                    Toast.LENGTH_LONG
+                ).show()
+                error?.let { Toast.makeText(context, it, Toast.LENGTH_LONG).show() }
+            } else {
+                Toast.makeText(context, error ?: "Backup could not be restored", Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -464,18 +569,26 @@ fun SettingsScreen(
         GroupedSurface {
         SettingsRow(
             icon = Icons.Filled.Upload,
-            title = "Export Backup (JSON)",
-            subtitle = "Save all bills and payments"
+            title = "Create Encrypted Backup",
+            subtitle = "Bills, payments, splits, settings, and receipt files"
         ) {
-            exportJsonLauncher.launch("billminder_backup.json")
+            backupPassphrasePurpose = BackupPassphrasePurpose.EXPORT
         }
 
         SettingsRow(
             icon = Icons.Filled.Download,
-            title = "Import Backup (JSON)",
-            subtitle = "Restore from a previous backup"
+            title = "Restore Encrypted Backup",
+            subtitle = "Preview, then merge with or replace current data"
         ) {
-            importJsonLauncher.launch(arrayOf("application/json"))
+            importBackupLauncher.launch(arrayOf("*/*"))
+        }
+
+        SettingsRow(
+            icon = Icons.Filled.History,
+            title = "Import Older JSON Backup",
+            subtitle = "Compatibility for bills and payments exported by 2.4.0 or earlier"
+        ) {
+            importLegacyJsonLauncher.launch(arrayOf("application/json", "text/plain"))
         }
 
         SettingsRow(
@@ -648,6 +761,195 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(28.dp))
     }
+
+    backupPassphrasePurpose?.let { purpose ->
+        BackupPassphraseDialog(
+            purpose = purpose,
+            onSubmit = { submitBackupPassphrase(purpose, it) },
+            onDismiss = {
+                backupPassphrasePurpose = null
+                pendingExportPassphrase = ""
+                if (purpose == BackupPassphrasePurpose.IMPORT) pendingImportUri = null
+            }
+        )
+    }
+
+    backupPreview?.let { preview ->
+        BackupPreviewDialog(
+            preview = preview,
+            onMerge = { restorePreviewedBackup(BackupRestorePolicy.MERGE) },
+            onReplace = { restorePreviewedBackup(BackupRestorePolicy.REPLACE) },
+            onDismiss = {
+                backupPreview = null
+                pendingRestorePassphrase = ""
+                pendingImportUri = null
+            }
+        )
+    }
+
+    backupBusyMessage?.let { BackupProgressDialog(it) }
+}
+
+@Composable
+private fun BackupPassphraseDialog(
+    purpose: BackupPassphrasePurpose,
+    onSubmit: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var passphrase by remember { mutableStateOf("") }
+    var confirmation by remember { mutableStateOf("") }
+    val exporting = purpose == BackupPassphrasePurpose.EXPORT
+    val lengthValid = passphrase.length in 8..128
+    val matches = !exporting || passphrase == confirmation
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CatSurface0,
+        shape = RoundedCornerShape(12.dp),
+        title = {
+            Text(
+                if (exporting) "Protect This Backup" else "Open Encrypted Backup",
+                color = CatText
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    if (exporting) {
+                        "Use a passphrase you can store safely. It cannot be recovered and it is separate from your app PIN."
+                    } else {
+                        "Enter the passphrase used when this backup was created."
+                    },
+                    color = CatSubtext0,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                OutlinedTextField(
+                    value = passphrase,
+                    onValueChange = { if (it.length <= 128) passphrase = it },
+                    label = { Text("Backup passphrase") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    isError = passphrase.isNotEmpty() && !lengthValid,
+                    supportingText = {
+                        if (passphrase.isNotEmpty() && !lengthValid) {
+                            Text("Use 8 to 128 characters")
+                        }
+                    },
+                    colors = settingsFieldColors(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (exporting) {
+                    OutlinedTextField(
+                        value = confirmation,
+                        onValueChange = { if (it.length <= 128) confirmation = it },
+                        label = { Text("Repeat passphrase") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        isError = confirmation.isNotEmpty() && !matches,
+                        supportingText = {
+                            if (confirmation.isNotEmpty() && !matches) {
+                                Text("Passphrases do not match")
+                            }
+                        },
+                        colors = settingsFieldColors(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = lengthValid && matches,
+                onClick = { onSubmit(passphrase) }
+            ) {
+                Text(if (exporting) "Choose File" else "Preview", color = CatBlue)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel", color = CatSubtext0) }
+        }
+    )
+}
+
+@Composable
+private fun BackupPreviewDialog(
+    preview: BackupPreview,
+    onMerge: () -> Unit,
+    onReplace: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val exported = remember(preview.exportedAt) {
+        java.text.DateFormat.getDateTimeInstance().format(java.util.Date(preview.exportedAt))
+    }
+    val receiptSize = remember(preview.receiptBytes) { readableBytes(preview.receiptBytes) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CatSurface0,
+        shape = RoundedCornerShape(12.dp),
+        title = { Text("Backup Preview", color = CatText) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Created $exported with BillMinder ${preview.appVersion}", color = CatSubtext0)
+                Text(
+                    "${preview.bills} bills and ${preview.payments} payments",
+                    color = CatText,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    "${preview.payees} split payees, ${preview.receipts} receipts ($receiptSize)",
+                    color = CatSubtext0
+                )
+                Text(
+                    "${preview.preferenceValues} saved preference values are included. App PINs and biometric credentials are never restored.",
+                    color = CatSubtext0,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                HorizontalDivider(color = CatSurface1)
+                Text(
+                    "Merge keeps current bills and adds this backup. Replace removes current bill data after the backup passes every check.",
+                    color = CatSubtext0,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        },
+        confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                TextButton(onClick = onMerge) { Text("Merge", color = CatBlue) }
+                TextButton(onClick = onReplace) { Text("Replace", color = CatRed) }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel", color = CatSubtext0) }
+        }
+    )
+}
+
+@Composable
+private fun BackupProgressDialog(message: String) {
+    AlertDialog(
+        onDismissRequest = {},
+        containerColor = CatSurface0,
+        shape = RoundedCornerShape(12.dp),
+        title = { Text(message, color = CatText) },
+        text = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                CircularProgressIndicator(color = CatBlue)
+            }
+        },
+        confirmButton = {}
+    )
+}
+
+private fun readableBytes(bytes: Long): String = when {
+    bytes < 1024L -> "$bytes B"
+    bytes < 1024L * 1024L -> "%.1f KB".format(bytes / 1024.0)
+    else -> "%.1f MB".format(bytes / (1024.0 * 1024.0))
 }
 
 @Composable

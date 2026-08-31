@@ -21,6 +21,12 @@ data class BillGraph(
         get() = payments.map { it.attachmentFile }.filter { it.isNotBlank() }
 }
 
+data class BackupGraphSnapshot(
+    val bills: List<Bill>,
+    val payments: List<Payment>,
+    val payees: List<BillPayee>
+)
+
 class BillRepository(private val database: BillDatabase) {
 
     private val dao: BillDao = database.billDao()
@@ -130,6 +136,78 @@ class BillRepository(private val database: BillDatabase) {
     suspend fun getAllBillsForExport(): List<Bill> = dao.getAllBillsForExport()
 
     suspend fun getAllPaymentsForExport(): List<Payment> = dao.getAllPaymentsForExport()
+
+    suspend fun getAllPayeesForExport(): List<BillPayee> = dao.getAllPayeesForExport()
+
+    /** Captures one internally consistent graph for a portable backup. */
+    suspend fun snapshotForBackup(): BackupGraphSnapshot = database.withTransaction {
+        BackupGraphSnapshot(
+            bills = dao.getAllBillsForExport(),
+            payments = dao.getAllPaymentsForExport(),
+            payees = dao.getAllPayeesForExport()
+        )
+    }
+
+    /**
+     * Restores an already validated backup graph in one Room transaction. The callback runs after
+     * every row has been accepted but before Room commits, allowing prepared receipt files and
+     * preferences to join the same rollback boundary.
+     */
+    suspend fun restoreBackupGraph(
+        bills: List<Bill>,
+        payments: List<Payment>,
+        payees: List<BillPayee>,
+        policy: BackupRestorePolicy,
+        attachmentNamesByPaymentId: Map<Long, String>,
+        beforeCommit: suspend () -> Unit
+    ): BackupRestoreResult = database.withTransaction {
+        if (policy == BackupRestorePolicy.REPLACE) {
+            dao.deleteAllPayees()
+            dao.deleteAllPayments()
+            dao.deleteAllBills()
+        }
+
+        val billIdMap = mutableMapOf<Long, Long>()
+        bills.sortedBy { it.id }.forEach { bill ->
+            val restored = if (policy == BackupRestorePolicy.MERGE) bill.copy(id = 0L) else bill
+            val insertedId = dao.insertBill(CycleEngine.normalize(restored))
+            check(insertedId > 0L) { "Unable to restore bill ${bill.id}" }
+            billIdMap[bill.id] = if (policy == BackupRestorePolicy.MERGE) insertedId else bill.id
+        }
+
+        if (payees.isNotEmpty()) {
+            dao.insertPayees(
+                payees.sortedBy { it.id }.map { payee ->
+                    BillPayee(
+                        id = if (policy == BackupRestorePolicy.MERGE) 0L else payee.id,
+                        billId = billIdMap.getValue(payee.billId),
+                        name = payee.name,
+                        sharePercent = payee.sharePercent
+                    )
+                }
+            )
+        }
+
+        payments.sortedBy { it.id }.forEach { payment ->
+            val restored = payment.copy(
+                id = if (policy == BackupRestorePolicy.MERGE) 0L else payment.id,
+                billId = billIdMap.getValue(payment.billId),
+                attachmentFile = attachmentNamesByPaymentId[payment.id].orEmpty()
+            )
+            check(dao.insertPayment(restored) > 0L) {
+                "Unable to restore payment ${payment.id}"
+            }
+        }
+
+        beforeCommit()
+        BackupRestoreResult(
+            bills = bills.size,
+            payments = payments.size,
+            payees = payees.size,
+            receipts = attachmentNamesByPaymentId.size,
+            policy = policy
+        )
+    }
 
     suspend fun getLifetimeSpending(billId: Long): Double = dao.getLifetimeSpending(billId)
 

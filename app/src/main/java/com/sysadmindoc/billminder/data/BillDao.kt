@@ -76,6 +76,18 @@ interface BillDao {
     @Query("SELECT * FROM payments")
     suspend fun getAllPaymentsForExport(): List<Payment>
 
+    @Query("SELECT * FROM bill_payees ORDER BY id ASC")
+    suspend fun getAllPayeesForExport(): List<BillPayee>
+
+    @Query("DELETE FROM bill_payees")
+    suspend fun deleteAllPayees()
+
+    @Query("DELETE FROM payments")
+    suspend fun deleteAllPayments()
+
+    @Query("DELETE FROM bills")
+    suspend fun deleteAllBills()
+
     // Lifetime spending per bill
     @Query("SELECT COALESCE(SUM(amount), 0.0) FROM payments WHERE billId = :billId")
     suspend fun getLifetimeSpending(billId: Long): Double

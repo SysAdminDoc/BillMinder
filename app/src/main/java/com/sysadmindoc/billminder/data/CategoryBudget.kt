@@ -1,5 +1,6 @@
 package com.sysadmindoc.billminder.data
 
+import android.annotation.SuppressLint
 import android.content.Context
 
 data class CategoryBudget(
@@ -49,6 +50,23 @@ object BudgetPrefs {
             editor.putString(key, "$amount|${CurrencyCatalog.find(currency).code}")
         }
         editor.apply()
+    }
+
+    @SuppressLint("ApplySharedPref")
+    internal fun restoreFromBackup(
+        context: Context,
+        budgets: Map<BillCategory, CategoryBudget>
+    ): Boolean {
+        val editor = prefs(context).edit().clear()
+        budgets.toSortedMap(compareBy(BillCategory::name)).forEach { (category, budget) ->
+            if (budget.amount.isFinite() && budget.amount > 0.0) {
+                editor.putString(
+                    KEY_PREFIX + category.name,
+                    "${budget.amount}|${CurrencyCatalog.find(budget.currency).code}"
+                )
+            }
+        }
+        return editor.commit()
     }
 
     private fun prefs(context: Context) =
