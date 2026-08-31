@@ -15,7 +15,6 @@ import com.sysadmindoc.billminder.notification.NotificationHelper
 import com.sysadmindoc.billminder.notification.ReminderPrefs
 import com.sysadmindoc.billminder.security.EncryptedAttachment
 import com.sysadmindoc.billminder.security.EncryptedAttachmentStore
-import com.sysadmindoc.billminder.wear.WearSync
 import com.sysadmindoc.billminder.widget.WidgetUpdater
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -173,7 +172,6 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun refreshExternalSurfaces() {
-        WearSync.sync(getApplication())
         WidgetUpdater.updateAll(getApplication())
     }
 

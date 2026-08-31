@@ -9,7 +9,6 @@
 .cxx
 local.properties
 /app/build
-/wear/build/
 *.apk
 CLAUDE.md
 billminder.jks
@@ -31,3 +30,4 @@ CONTINUATION_PROMPT.md
 
 # Signing credentials, never committed
 keystore.properties
+/.build.log

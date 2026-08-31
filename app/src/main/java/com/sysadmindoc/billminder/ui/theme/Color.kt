@@ -3,7 +3,7 @@ package com.sysadmindoc.billminder.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // Midnight ledger palette. Names stay stable because the colors are also shared
-// with widgets, Wear surfaces, and persisted bill category selections.
+// with widgets and persisted bill category selections.
 val CatCrust = Color(0xFF020814)
 val CatMantle = Color(0xFF06101E)
 val CatBase = Color(0xFF0A1525)

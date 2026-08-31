@@ -5,7 +5,6 @@ import com.sysadmindoc.billminder.data.BackupManager
 import com.sysadmindoc.billminder.data.BillDatabase
 import com.sysadmindoc.billminder.notification.NotificationHelper
 import com.sysadmindoc.billminder.security.EncryptedAttachmentStore
-import com.sysadmindoc.billminder.wear.WearSync
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -15,7 +14,6 @@ class BillMinderApp : Application() {
     override fun onCreate() {
         super.onCreate()
         NotificationHelper.createChannels(this)
-        WearSync.sync(this)
         sweepReceiptFiles()
     }
 

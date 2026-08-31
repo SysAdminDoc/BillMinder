@@ -9,7 +9,6 @@ import com.sysadmindoc.billminder.data.BillDatabase
 import com.sysadmindoc.billminder.data.BillRepository
 import com.sysadmindoc.billminder.data.Payment
 import com.sysadmindoc.billminder.domain.CycleEngine
-import com.sysadmindoc.billminder.wear.WearSync
 import com.sysadmindoc.billminder.widget.WidgetUpdater
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -140,7 +139,6 @@ class ReminderReceiver : BroadcastReceiver() {
             NotificationHelper.cancelAll(context, billId)
             cancelCascade(context, billId)
             ReminderScheduler.scheduleReminder(context, bill)
-            WearSync.sync(context)
             WidgetUpdater.updateAll(context)
         }
     }

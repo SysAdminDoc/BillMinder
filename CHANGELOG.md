@@ -4,6 +4,8 @@ All notable changes to BillMinder will be documented in this file.
 
 ## [Unreleased]
 
+- Removed the Wear OS companion module and all phone-side watch synchronization. The watch tile was never usable because the two modules shipped under different application IDs, and the app no longer carries the Play services wearable, tiles, or protolayout libraries.
+- Dropped the unused Play services location library. Home geofencing was removed earlier, so nothing referenced it.
 - Home, Calendar, forecasts, cash-flow planning, and all three widgets now read the same cycle snapshot for dates, paid state, and due state.
 - Monthly totals count every occurrence in the month. Weekly bills can contribute four or five due dates, and the Calendar header follows the month being viewed.
 - Remaining balances now total the scheduled amounts of unpaid occurrences. A custom payment amount no longer changes what an unrelated unpaid cycle still needs.
