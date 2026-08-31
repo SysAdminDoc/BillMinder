@@ -120,7 +120,11 @@ fun HomeScreen(
                 actionLabel = "Undo",
                 duration = SnackbarDuration.Short
             )
-            if (result == SnackbarResult.ActionPerformed) viewModel.undoDelete()
+            if (result == SnackbarResult.ActionPerformed) {
+                viewModel.undoDelete()
+            } else {
+                viewModel.confirmPendingDelete()
+            }
         }
     }
 

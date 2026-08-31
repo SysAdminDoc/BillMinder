@@ -11,6 +11,12 @@ import com.sysadmindoc.billminder.domain.CycleEngine
 import java.time.LocalDate
 import java.time.ZoneId
 
+/** Whether the stored database can be opened with this build. */
+sealed interface DatabaseHealth {
+    data object Ready : DatabaseHealth
+    data class Unusable(val reason: String, val databasePath: String) : DatabaseHealth
+}
+
 @Database(entities = [Bill::class, Payment::class, BillPayee::class], version = 7, exportSchema = true)
 @TypeConverters(Converters::class)
 abstract class BillDatabase : RoomDatabase() {
@@ -165,12 +171,30 @@ abstract class BillDatabase : RoomDatabase() {
             MIGRATION_6_7
         )
 
+        /**
+         * Opens the database once so a failure surfaces before the app tries to use it. The
+         * database is never deleted to recover: an unreadable or newer schema is reported so the
+         * user can update the app or restore a backup with their data still on disk.
+         */
+        fun checkHealth(context: Context): DatabaseHealth = try {
+            getDatabase(context).openHelper.readableDatabase.version
+            DatabaseHealth.Ready
+        } catch (error: Throwable) {
+            val file = context.getDatabasePath(DATABASE_NAME)
+            DatabaseHealth.Unusable(
+                reason = error.message ?: error::class.java.simpleName,
+                databasePath = file.absolutePath
+            )
+        }
+
+        private const val DATABASE_NAME = "billminder.db"
+
         fun getDatabase(context: Context): BillDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
                     context.applicationContext,
                     BillDatabase::class.java,
-                    "billminder.db"
+                    DATABASE_NAME
                 )
                     .addMigrations(*ALL_MIGRATIONS)
                     .build()

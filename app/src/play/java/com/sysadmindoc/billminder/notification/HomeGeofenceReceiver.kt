@@ -22,7 +22,7 @@ class HomeGeofenceReceiver : BroadcastReceiver() {
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val repository = BillRepository(BillDatabase.getDatabase(context).billDao())
+                val repository = BillRepository(BillDatabase.getDatabase(context))
                 val payments = repository.getAllPaymentsForExport()
                 repository.getAllBillsList()
                     .mapNotNull { bill -> BillCycles.resolve(bill, payments)?.let { bill to it } }

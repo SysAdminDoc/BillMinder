@@ -1,12 +1,29 @@
 package com.sysadmindoc.billminder.data
 
+import androidx.room.withTransaction
 import com.sysadmindoc.billminder.domain.CycleEngine
 import kotlinx.coroutines.flow.Flow
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.Calendar
 
-class BillRepository(private val dao: BillDao) {
+/**
+ * A bill and everything that hangs off it, captured before a delete so the exact same graph can be
+ * restored. Attachment file names travel with it, so their bytes are only purged once the undo
+ * window has closed.
+ */
+data class BillGraph(
+    val bill: Bill,
+    val payees: List<BillPayee>,
+    val payments: List<Payment>
+) {
+    val attachmentFiles: List<String>
+        get() = payments.map { it.attachmentFile }.filter { it.isNotBlank() }
+}
+
+class BillRepository(private val database: BillDatabase) {
+
+    private val dao: BillDao = database.billDao()
 
     val allBills: Flow<List<Bill>> = dao.getAllBills()
     val allPayments: Flow<List<Payment>> = dao.getAllPayments()
@@ -32,6 +49,57 @@ class BillRepository(private val dao: BillDao) {
     suspend fun insertBill(bill: Bill): Long = dao.insertBill(CycleEngine.normalize(bill))
 
     suspend fun updateBill(bill: Bill) = dao.updateBill(CycleEngine.normalize(bill))
+
+    /**
+     * Writes a bill and its payee split as one unit. A failure part-way through leaves neither the
+     * bill nor the split changed.
+     */
+    suspend fun saveBillWithPayees(bill: Bill, payees: List<PayeeDraft>?): Bill? =
+        database.withTransaction {
+            val normalized = CycleEngine.normalize(bill)
+            val id = if (normalized.id == 0L) {
+                dao.insertBill(normalized)
+            } else {
+                dao.updateBill(normalized)
+                normalized.id
+            }
+            if (payees != null) {
+                dao.deletePayeesForBill(id)
+                if (payees.isNotEmpty()) {
+                    dao.insertPayees(
+                        payees.map { BillPayee(billId = id, name = it.name, sharePercent = it.sharePercent) }
+                    )
+                }
+            }
+            dao.getBillById(id)
+        }
+
+    /**
+     * Permanently removes a bill together with its payees and payment history, and hands back the
+     * complete graph so the caller can restore it or clean up receipt bytes.
+     */
+    suspend fun deleteBillGraph(billId: Long): BillGraph? = database.withTransaction {
+        val bill = dao.getBillById(billId) ?: return@withTransaction null
+        val graph = BillGraph(
+            bill = bill,
+            payees = dao.getPayeesForBill(billId),
+            payments = dao.getPaymentsForBillList(billId)
+        )
+        // Payees and payments cascade, but delete them explicitly so the outcome does not depend
+        // on foreign keys being enforced by the connection.
+        dao.deletePayeesForBill(billId)
+        dao.deletePaymentsForBill(billId)
+        dao.deleteBillById(billId)
+        graph
+    }
+
+    /** Puts a deleted bill back exactly as it was, original identifiers included. */
+    suspend fun restoreBillGraph(graph: BillGraph): Bill? = database.withTransaction {
+        dao.insertBill(graph.bill)
+        if (graph.payees.isNotEmpty()) dao.insertPayees(graph.payees)
+        graph.payments.forEach { dao.upsertPayment(it) }
+        dao.getBillById(graph.bill.id)
+    }
 
     suspend fun deleteBill(bill: Bill) = dao.deleteBill(bill)
 
@@ -90,7 +158,7 @@ class BillRepository(private val dao: BillDao) {
 
     suspend fun getPayeesForBill(billId: Long): List<BillPayee> = dao.getPayeesForBill(billId)
 
-    suspend fun replacePayees(billId: Long, payees: List<PayeeDraft>) {
+    suspend fun replacePayees(billId: Long, payees: List<PayeeDraft>) = database.withTransaction {
         dao.deletePayeesForBill(billId)
         if (payees.isNotEmpty()) {
             dao.insertPayees(payees.map {
@@ -100,6 +168,9 @@ class BillRepository(private val dao: BillDao) {
     }
 
     suspend fun deletePayeesForBill(billId: Long) = dao.deletePayeesForBill(billId)
+
+    /** Runs [block] inside a single database transaction. */
+    suspend fun <T> inTransaction(block: suspend () -> T): T = database.withTransaction(block)
 
     private fun getMonthRange(year: Int, month: Int): Pair<Long, Long> {
         val start = Calendar.getInstance().apply {

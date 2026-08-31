@@ -26,7 +26,7 @@ import com.sysadmindoc.billminder.domain.BillCycles
 
 class LockScreenWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val repository = BillRepository(BillDatabase.getDatabase(context).billDao())
+        val repository = BillRepository(BillDatabase.getDatabase(context))
         val payments = repository.getAllPaymentsForExport()
         var next: LockScreenBill? = null
         for (bill in repository.getAllBillsList()) {

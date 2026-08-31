@@ -21,7 +21,7 @@ class ReminderReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val db = BillDatabase.getDatabase(context)
-        val repo = BillRepository(db.billDao())
+        val repo = BillRepository(db)
 
         when (intent.action) {
             "BILL_REMINDER" -> handleReminder(context, intent, repo)

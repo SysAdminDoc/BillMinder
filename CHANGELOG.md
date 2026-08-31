@@ -11,6 +11,9 @@ All notable changes to BillMinder will be documented in this file.
 - The calendar shows real occurrences. A weekly bill no longer paints its day-of-week number onto that day of the month.
 - Removed the destructive database fallback that could erase saved bills and payments on an unexpected schema change, and started exporting Room schemas.
 - Reminder broadcasts now finish their database work before the receiver is released, and alarms carry the cycle they belong to.
+- Saving, duplicating, importing, deleting, and undoing a bill each run as a single database transaction. A failure part-way through leaves the previous state alone rather than a half-written bill.
+- Deleting a bill is permanent and takes its payees and payment history with it. Undo puts the whole thing back under its original identifier, and receipt files are only destroyed once the undo window has closed.
+- If the saved database cannot be opened, the app now explains what happened and leaves the file alone instead of crashing.
 
 ## [v2.4.0]: 2026-08-31
 

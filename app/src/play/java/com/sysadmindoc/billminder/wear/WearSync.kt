@@ -38,7 +38,7 @@ object WearSync {
         val appContext = context.applicationContext
         scope.launch {
             runCatching {
-                val repository = BillRepository(BillDatabase.getDatabase(appContext).billDao())
+                val repository = BillRepository(BillDatabase.getDatabase(appContext))
                 val payments = repository.getAllPaymentsForExport()
                 var snapshot: WearBillSnapshot? = null
                 for (bill in repository.getAllBillsList()) {

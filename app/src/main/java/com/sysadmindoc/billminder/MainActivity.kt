@@ -31,10 +31,14 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
+import com.sysadmindoc.billminder.data.BillDatabase
+import com.sysadmindoc.billminder.data.DatabaseHealth
 import com.sysadmindoc.billminder.security.SecurityPrefs
 import com.sysadmindoc.billminder.ui.screens.*
 import com.sysadmindoc.billminder.ui.theme.*
 import com.sysadmindoc.billminder.viewmodel.BillViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.concurrent.Executors
 
 class MainActivity : FragmentActivity() {
@@ -79,8 +83,16 @@ class MainActivity : FragmentActivity() {
                 val unlocked by isUnlocked
                 var pinConfigured by remember { mutableStateOf(pinSet) }
                 var duressMode by remember { mutableStateOf(false) }
+                var databaseHealth by remember { mutableStateOf<DatabaseHealth?>(null) }
 
-                if (unlocked) {
+                LaunchedEffect(Unit) {
+                    databaseHealth = withContext(Dispatchers.IO) { BillDatabase.checkHealth(this@MainActivity) }
+                }
+
+                val health = databaseHealth
+                if (health is DatabaseHealth.Unusable) {
+                    DatabaseRecoveryScreen(health.reason, health.databasePath)
+                } else if (unlocked) {
                     if (duressMode) {
                         DecoyScreen()
                     } else {

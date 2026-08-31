@@ -35,30 +35,34 @@ object BackupManager {
         } ?: return 0
 
         val backup = gson.fromJson(json, BackupData::class.java)
-        val billIdMap = mutableMapOf<Long, Long>()
-        var count = 0
-        backup.bills.forEach { bill ->
-            val normalized = bill.copy(
-                id = 0,
-                name = MerchantNormalizer.normalize(bill.name),
-                currency = CurrencyCatalog.find(bill.currency).code
-            )
-            val newId = repo.insertBill(normalized)
-            billIdMap[bill.id] = newId
-            count++
-        }
-        backup.payments.forEach { payment ->
-            val newBillId = billIdMap[payment.billId] ?: return@forEach
-            repo.insertPayment(
-                payment.copy(
+
+        // One transaction: a partly written restore would leave payments pointing at bills that
+        // never made it in.
+        return repo.inTransaction {
+            val billIdMap = mutableMapOf<Long, Long>()
+            var count = 0
+            backup.bills.forEach { bill ->
+                val normalized = bill.copy(
                     id = 0,
-                    billId = newBillId,
-                    currency = CurrencyCatalog.find(payment.currency).code,
-                    cycleKey = payment.cycleKey.ifBlank { CycleEngine.cycleKeyForInstant(payment.dueDate) }
+                    name = MerchantNormalizer.normalize(bill.name),
+                    currency = CurrencyCatalog.find(bill.currency).code
                 )
-            )
+                billIdMap[bill.id] = repo.insertBill(normalized)
+                count++
+            }
+            backup.payments.forEach { payment ->
+                val newBillId = billIdMap[payment.billId] ?: return@forEach
+                repo.insertPayment(
+                    payment.copy(
+                        id = 0,
+                        billId = newBillId,
+                        currency = CurrencyCatalog.find(payment.currency).code,
+                        cycleKey = payment.cycleKey.ifBlank { CycleEngine.cycleKeyForInstant(payment.dueDate) }
+                    )
+                )
+            }
+            count
         }
-        return count
     }
 
     suspend fun importCsv(
@@ -75,6 +79,7 @@ object BackupManager {
         var paymentsImported = 0
         var rowsSkipped = 0
 
+        return repo.inTransaction {
         table.rows.forEach { row ->
             val rawName = table.value(row, CsvField.NAME, mapping)
             val rawAmount = table.value(row, CsvField.AMOUNT, mapping)
@@ -165,7 +170,8 @@ object BackupManager {
                 if (inserted > 0L) paymentsImported++ else rowsSkipped++
             }
         }
-        return CsvImportResult(billsImported, paymentsImported, rowsSkipped)
+        CsvImportResult(billsImported, paymentsImported, rowsSkipped)
+        }
     }
 
     suspend fun exportYearEndCsv(context: Context, uri: Uri, repo: BillRepository, year: Int) {

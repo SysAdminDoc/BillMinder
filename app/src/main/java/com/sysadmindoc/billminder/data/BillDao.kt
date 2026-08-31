@@ -61,6 +61,9 @@ interface BillDao {
     @Delete
     suspend fun deletePayment(payment: Payment)
 
+    @Query("DELETE FROM payments WHERE billId = :billId")
+    suspend fun deletePaymentsForBill(billId: Long)
+
     @Query("SELECT * FROM bills WHERE isEnabled = 1")
     suspend fun getAllBillsList(): List<Bill>
 

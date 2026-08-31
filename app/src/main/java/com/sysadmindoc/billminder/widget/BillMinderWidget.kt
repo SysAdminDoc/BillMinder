@@ -27,7 +27,7 @@ class BillMinderWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val db = BillDatabase.getDatabase(context)
-        val repo = BillRepository(db.billDao())
+        val repo = BillRepository(db)
         val bills = repo.getAllBillsList()
         val displayCurrency = CurrencyPrefs.getDisplayCurrency(context)
         val manualRates = CurrencyPrefs.getManualRates(context)

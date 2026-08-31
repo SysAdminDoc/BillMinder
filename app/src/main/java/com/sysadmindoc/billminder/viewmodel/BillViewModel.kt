@@ -65,7 +65,7 @@ data class ChartData(
 class BillViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db = BillDatabase.getDatabase(application)
-    private val repo = BillRepository(db.billDao())
+    private val repo = BillRepository(db)
 
     // Search & filter state
     private val _searchQuery = MutableStateFlow("")
@@ -84,7 +84,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
     // Undo delete state
     private val _lastDeletedBill = MutableStateFlow<Bill?>(null)
     val lastDeletedBill: StateFlow<Bill?> = _lastDeletedBill
-    private var lastDeletedPayees: List<PayeeDraft> = emptyList()
+    private var pendingDelete: BillGraph? = null
 
     /** One resolution path for every list, summary, and detail surface in the app. */
     private fun statusesFor(billList: List<Bill>, paymentList: List<Payment>): List<BillWithStatus> {
@@ -357,16 +357,12 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
                 name = MerchantNormalizer.normalize(bill.name),
                 currency = CurrencyCatalog.find(bill.currency).code
             )
-            val id = if (normalizedBill.id == 0L) {
-                repo.insertBill(normalizedBill)
-            } else {
-                repo.updateBill(normalizedBill)
-                normalizedBill.id
-            }
-            val saved = repo.getBillById(id) ?: return@launch
-            if (payees != null) {
-                repo.replacePayees(saved.id, payees)
-            }
+            val saved = try {
+                repo.saveBillWithPayees(normalizedBill, payees)
+            } catch (error: Exception) {
+                _snackbarMessage.emit("Could not save ${normalizedBill.name}")
+                return@launch
+            } ?: return@launch
             if (saved.isEnabled) {
                 ReminderScheduler.scheduleReminder(getApplication(), saved)
             } else {
@@ -376,32 +372,62 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Permanently removes the bill, its payees, and its payment history in one transaction. The
+     * graph is held until the undo window closes; only then are the receipt bytes destroyed.
+     */
     fun deleteBill(bill: Bill) {
         viewModelScope.launch {
+            purgePendingDelete()
             ReminderScheduler.cancelReminder(getApplication(), bill.id)
-            lastDeletedPayees = repo.getPayeesForBill(bill.id).map { PayeeDraft(it.name, it.sharePercent) }
-            repo.deletePayeesForBill(bill.id)
-            repo.deleteBill(bill)
-            _lastDeletedBill.value = bill
+            val graph = try {
+                repo.deleteBillGraph(bill.id)
+            } catch (error: Exception) {
+                _snackbarMessage.emit("Could not delete ${bill.name}")
+                return@launch
+            }
+            if (graph == null) return@launch
+            pendingDelete = graph
+            _lastDeletedBill.value = graph.bill
             refreshExternalSurfaces()
+            loadChartData()
             _snackbarMessage.emit("${bill.name} deleted")
         }
     }
 
     fun undoDelete() {
-        val bill = _lastDeletedBill.value ?: return
+        val graph = pendingDelete ?: return
         viewModelScope.launch {
-            val restored = bill.copy(id = 0)
-            val id = repo.insertBill(restored)
-            repo.replacePayees(id, lastDeletedPayees)
-            val saved = repo.getBillById(id) ?: return@launch
-            if (saved.isEnabled) {
-                ReminderScheduler.scheduleReminder(getApplication(), saved)
+            val restored = try {
+                repo.restoreBillGraph(graph)
+            } catch (error: Exception) {
+                _snackbarMessage.emit("Could not restore ${graph.bill.name}")
+                return@launch
+            } ?: return@launch
+            if (restored.isEnabled) {
+                ReminderScheduler.scheduleReminder(getApplication(), restored)
             }
+            pendingDelete = null
             _lastDeletedBill.value = null
-            lastDeletedPayees = emptyList()
             refreshExternalSurfaces()
+            loadChartData()
         }
+    }
+
+    /** Called when the undo window closes without being used, making the delete final. */
+    fun confirmPendingDelete() = purgePendingDelete()
+
+    /** Drops the undo snapshot and destroys the receipt bytes it was protecting. */
+    private fun purgePendingDelete() {
+        val graph = pendingDelete ?: return
+        pendingDelete = null
+        _lastDeletedBill.value = null
+        graph.attachmentFiles.forEach { EncryptedAttachmentStore.delete(getApplication(), it) }
+    }
+
+    override fun onCleared() {
+        purgePendingDelete()
+        super.onCleared()
     }
 
     fun duplicateBill(bill: Bill) {
@@ -412,9 +438,12 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
                 name = "${bill.name} (Copy)",
                 createdAt = System.currentTimeMillis()
             )
-            val id = repo.insertBill(copy)
-            repo.replacePayees(id, sourcePayees.map { PayeeDraft(it.name, it.sharePercent) })
-            val saved = repo.getBillById(id) ?: return@launch
+            val saved = try {
+                repo.saveBillWithPayees(copy, sourcePayees.map { PayeeDraft(it.name, it.sharePercent) })
+            } catch (error: Exception) {
+                _snackbarMessage.emit("Could not duplicate ${bill.name}")
+                return@launch
+            } ?: return@launch
             if (saved.isEnabled) {
                 ReminderScheduler.scheduleReminder(getApplication(), saved)
             }
