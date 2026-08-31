@@ -2,6 +2,7 @@ package com.sysadmindoc.billminder
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -31,7 +32,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
+import androidx.core.util.Consumer
 import com.sysadmindoc.billminder.data.BillDatabase
+import com.sysadmindoc.billminder.data.CurrencyFormatter
+import com.sysadmindoc.billminder.data.SmsBillCandidate
+import com.sysadmindoc.billminder.data.SmsBillParser
 import com.sysadmindoc.billminder.data.DatabaseHealth
 import com.sysadmindoc.billminder.security.SecurityPrefs
 import com.sysadmindoc.billminder.ui.screens.*
@@ -39,6 +44,7 @@ import com.sysadmindoc.billminder.ui.theme.*
 import com.sysadmindoc.billminder.viewmodel.BillViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.time.LocalDate
 import java.util.concurrent.Executors
 
 class MainActivity : FragmentActivity() {
@@ -89,6 +95,13 @@ class MainActivity : FragmentActivity() {
                     databaseHealth = withContext(Dispatchers.IO) { BillDatabase.checkHealth(this@MainActivity) }
                 }
 
+                var sharedMessage by remember { mutableStateOf(sharedTextFrom(intent)) }
+                DisposableEffect(Unit) {
+                    val listener = Consumer<Intent> { sharedMessage = sharedTextFrom(it) }
+                    addOnNewIntentListener(listener)
+                    onDispose { removeOnNewIntentListener(listener) }
+                }
+
                 val health = databaseHealth
                 // Nothing touches the database until the check finishes: building the nav host
                 // first would open it through the view model and crash before this can render.
@@ -106,7 +119,9 @@ class MainActivity : FragmentActivity() {
                             onToggleBiometric = { enabled ->
                                 SecurityPrefs.setBiometricEnabled(this, enabled)
                             },
-                            onPinConfigured = { pinConfigured = true }
+                            onPinConfigured = { pinConfigured = true },
+                            sharedMessage = sharedMessage,
+                            onSharedMessageHandled = { sharedMessage = null }
                         )
                     }
                 } else {
@@ -315,13 +330,40 @@ fun BillMinderNavHost(
     biometricAvailable: Boolean,
     isBiometricEnabled: Boolean,
     onToggleBiometric: (Boolean) -> Unit,
-    onPinConfigured: () -> Unit
+    onPinConfigured: () -> Unit,
+    sharedMessage: String? = null,
+    onSharedMessageHandled: () -> Unit = {}
 ) {
     val navController = rememberNavController()
     val viewModel: BillViewModel = viewModel()
 
     var biometricState by remember { mutableStateOf(isBiometricEnabled) }
     var selectedTab by remember { mutableStateOf(BottomTab.HOME) }
+
+    // A message the user shared into the app. Reading one is how the Play build proposes a bill
+    // from a payment text without asking for access to the whole SMS inbox.
+    var sharedCandidate by remember { mutableStateOf<SmsBillCandidate?>(null) }
+    var sharedMessageRejected by remember { mutableStateOf(false) }
+    LaunchedEffect(sharedMessage) {
+        val message = sharedMessage ?: return@LaunchedEffect
+        val candidate = SmsBillParser.parse(sender = null, body = message, today = LocalDate.now())
+        if (candidate == null) sharedMessageRejected = true else sharedCandidate = candidate
+        onSharedMessageHandled()
+    }
+
+    sharedCandidate?.let { candidate ->
+        SharedMessageDialog(
+            candidate = candidate,
+            onAccept = {
+                viewModel.importSmsCandidate(candidate)
+                sharedCandidate = null
+            },
+            onDismiss = { sharedCandidate = null }
+        )
+    }
+    if (sharedMessageRejected) {
+        SharedMessageRejectedDialog(onDismiss = { sharedMessageRejected = false })
+    }
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
@@ -449,4 +491,53 @@ fun BillMinderNavHost(
             }
         }
     }
+}
+
+/** The text of a message the user shared into the app, if this intent carries one. */
+private fun sharedTextFrom(intent: Intent?): String? =
+    intent?.takeIf { it.action == Intent.ACTION_SEND && it.type == "text/plain" }
+        ?.getStringExtra(Intent.EXTRA_TEXT)
+        ?.takeIf { it.isNotBlank() }
+
+@Composable
+private fun SharedMessageDialog(
+    candidate: SmsBillCandidate,
+    onAccept: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CatSurface0,
+        title = { Text("Add this bill?", color = CatText) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "${candidate.name} · ${CurrencyFormatter.format(candidate.amount, candidate.currency)}",
+                    color = CatText,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text("Due ${candidate.dueDate}", color = CatSubtext0)
+                Text(candidate.preview, color = CatSubtext0, style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = { TextButton(onClick = onAccept) { Text("Add bill", color = CatBlue) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Not now", color = CatSubtext0) } }
+    )
+}
+
+@Composable
+private fun SharedMessageRejectedDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CatSurface0,
+        title = { Text("Nothing to add", color = CatText) },
+        text = {
+            Text(
+                "That message did not contain an amount and a due date, so there is nothing to " +
+                    "propose. You can still add the bill by hand.",
+                color = CatSubtext0
+            )
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("OK", color = CatBlue) } }
+    )
 }

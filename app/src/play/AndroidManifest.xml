@@ -1,14 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    The Play build declares no location permissions. Home geofencing needed background location,
+    which Play grants only against a reviewed declaration BillMinder does not hold, so the feature
+    is not shipped rather than shipped with an undeclared permission.
+-->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
     <application>
-        <receiver
-            android:name=".notification.HomeGeofenceReceiver"
-            android:exported="false" />
-
         <service
             android:name=".wear.WearMessageListenerService"
             android:exported="true">
@@ -21,4 +19,5 @@
             </intent-filter>
         </service>
     </application>
+
 </manifest>

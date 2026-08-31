@@ -38,7 +38,19 @@ object SmsBillParser {
         "dec" to 12, "december" to 12
     )
 
-    fun parse(sender: String, body: String, today: LocalDate = LocalDate.now()): SmsBillCandidate? {
+    /** "Your Verizon bill of $84.30" and similar, where the merchant leads the sentence. */
+    private val leadingMerchant = Regex(
+        "(?i)\\byour\\s+([A-Za-z][A-Za-z0-9& .'-]{2,40}?)\\s+(?:bill|invoice|statement|payment|account)\\b"
+    )
+    private val referredMerchant = Regex(
+        "(?i)\\b(?:from|at|for)\\s+([A-Za-z][A-Za-z0-9& .'-]{2,50})"
+    )
+
+    /**
+     * @param sender who sent the message, or null when the user shared the text and there is no
+     *   sender to attribute it to.
+     */
+    fun parse(sender: String?, body: String, today: LocalDate = LocalDate.now()): SmsBillCandidate? {
         val normalized = body.replace(Regex("\\s+"), " ").trim()
         if (normalized.isBlank() || !dueSignal.containsMatchIn(normalized)) return null
 
@@ -55,20 +67,18 @@ object SmsBillParser {
             else -> (amountMatch.groups[3]?.value ?: amountMatch.groups[6]?.value)?.uppercase(Locale.ROOT) ?: "USD"
         }
         val dueDate = parseMonthDate(normalized, today) ?: parseNumericDate(normalized, today) ?: return null
-        val safeSender = sender.trim().ifBlank { "SMS bill" }
-        val displayName = if (safeSender.any { it.isLetter() }) {
-            safeSender.take(60)
+        val trimmedSender = sender?.trim().orEmpty()
+        val displayName = if (trimmedSender.any { it.isLetter() }) {
+            trimmedSender.take(60)
         } else {
-            Regex("(?i)\\b(?:from|at|for)\\s+([A-Za-z][A-Za-z0-9& .'-]{2,50})")
-                .find(normalized)?.groupValues?.getOrNull(1)?.trim()
-                ?: "SMS bill"
+            merchantFrom(normalized) ?: if (sender == null) "Shared bill" else "SMS bill"
         }
         return SmsBillCandidate(
             name = displayName,
             amount = amount,
             dueDate = dueDate,
             currency = currency,
-            sender = safeSender,
+            sender = trimmedSender.ifBlank { "Shared message" },
             preview = normalized.take(160)
         )
     }
@@ -97,6 +107,13 @@ object SmsBillParser {
                 if (rawYear.isBlank() && date.isBefore(today)) date.plusYears(1) else date
             }
         }
+
+    /** The merchant named in the message body, when it names one. */
+    private fun merchantFrom(normalized: String): String? =
+        (leadingMerchant.find(normalized) ?: referredMerchant.find(normalized))
+            ?.groupValues?.getOrNull(1)
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
 
     private fun safeDate(year: Int, month: Int, day: Int): LocalDate? =
         runCatching { LocalDate.of(year, month, day) }.getOrNull()

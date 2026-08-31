@@ -19,6 +19,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -40,9 +41,8 @@ import com.sysadmindoc.billminder.data.CsvTable
 import com.sysadmindoc.billminder.data.InterchangeFormat
 import com.sysadmindoc.billminder.data.SmsBillCandidate
 import com.sysadmindoc.billminder.DistributionFeatures
+import com.sysadmindoc.billminder.notification.ReminderPermissions
 import com.sysadmindoc.billminder.notification.ReminderPrefs
-import com.sysadmindoc.billminder.notification.GeofenceManager
-import com.sysadmindoc.billminder.notification.GeofencePrefs
 import com.sysadmindoc.billminder.security.SecurityPrefs
 import com.sysadmindoc.billminder.ui.components.GroupDivider
 import com.sysadmindoc.billminder.ui.components.GroupedSurface
@@ -71,36 +71,10 @@ fun SettingsScreen(
     var pendingInterchangeFormat by remember { mutableStateOf<InterchangeFormat?>(null) }
     var fullScreenReminders by remember { mutableStateOf(ReminderPrefs.isFullScreenEnabled(context)) }
     var vacationMode by remember { mutableStateOf(ReminderPrefs.isVacationMode(context)) }
-    var showGeofenceDialog by remember { mutableStateOf(false) }
-    var homeGeofenceEnabled by remember {
-        mutableStateOf(DistributionFeatures.includesPlayServices && GeofencePrefs.get(context)?.enabled == true)
-    }
     var smsCandidates by remember { mutableStateOf<List<SmsBillCandidate>>(emptyList()) }
+    // Read on every recomposition: any of these can be revoked from system settings at any time.
+    val reminderPermissions = ReminderPermissions.read(context)
     var showSmsCandidates by remember { mutableStateOf(false) }
-
-    val backgroundLocationLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) {
-            showGeofenceDialog = true
-        } else {
-            Toast.makeText(context, "Background location is required for home reminders", Toast.LENGTH_LONG).show()
-        }
-    }
-    val foregroundLocationLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        val granted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
-        if (!granted) {
-            Toast.makeText(context, "Precise location is required for home reminders", Toast.LENGTH_LONG).show()
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_BACKGROUND_LOCATION) != PackageManager.PERMISSION_GRANTED
-        ) {
-            backgroundLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-        } else {
-            showGeofenceDialog = true
-        }
-    }
 
     val smsPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -311,16 +285,38 @@ fun SettingsScreen(
             checked = isBiometricEnabled,
             onCheckedChange = onToggleBiometric
         )
-        SettingsToggle(
-            icon = Icons.Filled.Alarm,
-            title = "Full-Screen Reminders",
-            subtitle = "Show an alarm-style screen for due bills",
-            checked = fullScreenReminders,
-            onCheckedChange = { enabled ->
-                fullScreenReminders = enabled
-                ReminderPrefs.setFullScreenEnabled(context, enabled)
+        SettingsRow(
+            icon = if (reminderPermissions.remindersWillArrive) {
+                Icons.Filled.NotificationsActive
+            } else {
+                Icons.Filled.NotificationsOff
+            },
+            title = "Reminder delivery",
+            subtitle = reminderPermissions.summary,
+            tint = when {
+                !reminderPermissions.notificationsAllowed -> CatRed
+                !reminderPermissions.exactAlarmsAllowed -> CatYellow
+                else -> CatGreen
             }
-        )
+        ) {
+            runCatching {
+                context.startActivity(ReminderPermissions.settingsIntent(context, reminderPermissions))
+            }.onFailure {
+                Toast.makeText(context, "No settings screen is available for this", Toast.LENGTH_LONG).show()
+            }
+        }
+        if (DistributionFeatures.canShowFullScreenReminders) {
+            SettingsToggle(
+                icon = Icons.Filled.Alarm,
+                title = "Full-Screen Reminders",
+                subtitle = "Show an alarm-style screen for due bills",
+                checked = fullScreenReminders,
+                onCheckedChange = { enabled ->
+                    fullScreenReminders = enabled
+                    ReminderPrefs.setFullScreenEnabled(context, enabled)
+                }
+            )
+        }
         SettingsToggle(
             icon = Icons.Filled.EventBusy,
             title = "Vacation Mode",
@@ -331,62 +327,6 @@ fun SettingsScreen(
                 viewModel.setVacationMode(enabled)
             }
         )
-
-        if (DistributionFeatures.includesPlayServices) {
-            SettingsRow(
-                icon = Icons.Filled.LocationOn,
-                title = "Home Geofence",
-                subtitle = if (homeGeofenceEnabled) {
-                    GeofencePrefs.get(context)?.let { "Active · ${it.radiusMeters.toInt()}m radius" } ?: "Active"
-                } else {
-                    "Remind me when I arrive home"
-                }
-            ) {
-                val hasForeground = ContextCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.ACCESS_FINE_LOCATION
-                ) == PackageManager.PERMISSION_GRANTED
-                val hasBackground = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
-                    ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED
-                if (hasForeground && hasBackground) {
-                    showGeofenceDialog = true
-                } else {
-                    foregroundLocationLauncher.launch(
-                        arrayOf(
-                            Manifest.permission.ACCESS_FINE_LOCATION,
-                            Manifest.permission.ACCESS_COARSE_LOCATION
-                        )
-                    )
-                }
-            }
-
-            if (showGeofenceDialog) {
-                HomeGeofenceDialog(
-                    config = GeofencePrefs.get(context),
-                    onSave = { latitude, longitude, radius ->
-                        GeofenceManager.register(context, latitude, longitude, radius) { success, error ->
-                            if (success) {
-                                GeofencePrefs.save(context, latitude, longitude, radius)
-                                homeGeofenceEnabled = true
-                                showGeofenceDialog = false
-                                Toast.makeText(context, "Home geofence enabled", Toast.LENGTH_SHORT).show()
-                            } else {
-                                Toast.makeText(context, error ?: "Unable to enable home geofence", Toast.LENGTH_LONG).show()
-                            }
-                        }
-                    },
-                    onDisable = {
-                        GeofenceManager.unregister(context) {
-                            GeofencePrefs.setEnabled(context, false)
-                            homeGeofenceEnabled = false
-                            showGeofenceDialog = false
-                            Toast.makeText(context, "Home geofence disabled", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    onDismiss = { showGeofenceDialog = false }
-                )
-            }
-        }
 
         SettingsRow(
             icon = Icons.Filled.Pin,
@@ -532,22 +472,36 @@ fun SettingsScreen(
             importCsvLauncher.launch(arrayOf("text/csv", "text/plain", "application/vnd.ms-excel"))
         }
 
-        SettingsRow(
-            icon = Icons.Filled.Sms,
-            title = "Scan Payment SMS",
-            subtitle = "Opt-in local scan; propose bills from recent messages"
-        ) {
-            if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED) {
-                viewModel.scanSms { candidates, error ->
-                    if (error != null) {
-                        Toast.makeText(context, error, Toast.LENGTH_LONG).show()
-                    } else {
-                        smsCandidates = candidates
-                        showSmsCandidates = true
+        if (DistributionFeatures.canReadSmsInbox) {
+            SettingsRow(
+                icon = Icons.Filled.Sms,
+                title = "Scan Payment SMS",
+                subtitle = "Opt-in local scan; propose bills from recent messages"
+            ) {
+                if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED) {
+                    viewModel.scanSms { candidates, error ->
+                        if (error != null) {
+                            Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+                        } else {
+                            smsCandidates = candidates
+                            showSmsCandidates = true
+                        }
                     }
+                } else {
+                    smsPermissionLauncher.launch(Manifest.permission.READ_SMS)
                 }
-            } else {
-                smsPermissionLauncher.launch(Manifest.permission.READ_SMS)
+            }
+        } else {
+            SettingsRow(
+                icon = Icons.Filled.Sms,
+                title = "Read a shared message",
+                subtitle = "Share a payment text to BillMinder and it proposes a bill"
+            ) {
+                Toast.makeText(
+                    context,
+                    "Open the message, choose Share, and pick BillMinder.",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
 
@@ -660,6 +614,7 @@ private fun SettingsRow(
     icon: ImageVector,
     title: String,
     subtitle: String,
+    tint: Color = CatBlue,
     onClick: () -> Unit
 ) {
     Column {
@@ -667,6 +622,7 @@ private fun SettingsRow(
             icon = icon,
             title = title,
             subtitle = subtitle,
+            tint = tint,
             onClick = onClick
         ) {
             Icon(Icons.Filled.ChevronRight, null, tint = CatOverlay0)
@@ -852,92 +808,6 @@ private fun FxRatesDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text("Cancel", color = CatSubtext0)
-            }
-        }
-    )
-}
-
-@Composable
-private fun HomeGeofenceDialog(
-    config: com.sysadmindoc.billminder.notification.HomeGeofenceConfig?,
-    onSave: (Double, Double, Float) -> Unit,
-    onDisable: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    var latitude by remember { mutableStateOf(config?.latitude?.toString() ?: "") }
-    var longitude by remember { mutableStateOf(config?.longitude?.toString() ?: "") }
-    var radius by remember { mutableStateOf(config?.radiusMeters?.toString() ?: "150") }
-    var error by remember { mutableStateOf<String?>(null) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = CatSurface0,
-        shape = RoundedCornerShape(12.dp),
-        title = { Text("Home Geofence", color = CatText) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    "Enter the center point for home. The reminder fires when you enter and stay for five minutes.",
-                    color = CatSubtext0,
-                    style = MaterialTheme.typography.bodySmall
-                )
-                OutlinedTextField(
-                    value = latitude,
-                    onValueChange = { latitude = it },
-                    label = { Text("Latitude (-90 to 90)") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = settingsFieldColors()
-                )
-                OutlinedTextField(
-                    value = longitude,
-                    onValueChange = { longitude = it },
-                    label = { Text("Longitude (-180 to 180)") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = settingsFieldColors()
-                )
-                OutlinedTextField(
-                    value = radius,
-                    onValueChange = { radius = it.filter { char -> char.isDigit() } },
-                    label = { Text("Radius in meters (50 to 1000)") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = settingsFieldColors()
-                )
-                error?.let { Text(it, color = CatRed, style = MaterialTheme.typography.bodySmall) }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    val lat = latitude.toDoubleOrNull()
-                    val lon = longitude.toDoubleOrNull()
-                    val meters = radius.toFloatOrNull()
-                    when {
-                        lat == null || lat !in -90.0..90.0 -> error = "Enter a valid latitude"
-                        lon == null || lon !in -180.0..180.0 -> error = "Enter a valid longitude"
-                        meters == null || meters !in 50f..1000f -> error = "Radius must be between 50 and 1000 meters"
-                        else -> onSave(lat, lon, meters)
-                    }
-                }
-            ) {
-                Text("Enable", color = CatBlue)
-            }
-        },
-        dismissButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (config?.enabled == true) {
-                    TextButton(onClick = onDisable) {
-                        Text("Disable", color = CatRed)
-                    }
-                }
-                TextButton(onClick = onDismiss) {
-                    Text("Cancel", color = CatSubtext0)
-                }
             }
         }
     )
