@@ -68,10 +68,9 @@ import com.sysadmindoc.billminder.ui.theme.storedBillColor
 import com.sysadmindoc.billminder.viewmodel.BillViewModel
 import com.sysadmindoc.billminder.data.Bill
 import com.sysadmindoc.billminder.domain.BillCycles
-import com.sysadmindoc.billminder.domain.CycleEngine
+import com.sysadmindoc.billminder.domain.CycleRangeSnapshot
 import java.text.SimpleDateFormat
 import java.time.LocalDate
-import java.time.temporal.ChronoUnit
 import java.util.Calendar
 import java.util.Locale
 
@@ -83,10 +82,10 @@ fun CalendarScreen(
     onBillTap: (Long) -> Unit,
     onAddBill: () -> Unit
 ) {
-    val billsWithStatus by viewModel.billsWithStatus.collectAsState()
+    val bills by viewModel.bills.collectAsState()
     val payments by viewModel.payments.collectAsState()
-    val summary by viewModel.monthlySummary.collectAsState()
     val displayCurrency by viewModel.displayCurrency.collectAsState()
+    val currencyRevision by viewModel.currencySettingsRevision.collectAsState()
     val today = remember { Calendar.getInstance() }
     var currentMonth by remember { mutableIntStateOf(today.get(Calendar.MONTH)) }
     var currentYear by remember { mutableIntStateOf(today.get(Calendar.YEAR)) }
@@ -102,33 +101,26 @@ fun CalendarScreen(
     val monthFormat = remember { SimpleDateFormat("MMMM yyyy", Locale.getDefault()) }
     val selectedDateFormat = remember { SimpleDateFormat("EEEE, MMMM d", Locale.getDefault()) }
 
-    // Each occurrence carries its own state. Reusing the bill's current cycle here would paint a
-    // December date red because January went unpaid, and read "320 days overdue" on a future day.
-    val billsByDay = remember(billsWithStatus, payments, currentMonth, currentYear) {
+    val monthSnapshot = remember(
+        bills,
+        payments,
+        currentMonth,
+        currentYear,
+        displayCurrency,
+        currencyRevision
+    ) {
         val monthStart = LocalDate.of(currentYear, currentMonth + 1, 1)
-        val monthEnd = monthStart.plusMonths(1).minusDays(1)
-        val todayDate = LocalDate.now()
-        val paidByBill = BillCycles.paidKeys(payments)
-        val result = mutableMapOf<Int, MutableList<CalendarOccurrence>>()
-        billsWithStatus.forEach { status ->
-            val paidKeys = paidByBill[status.bill.id].orEmpty()
-            CycleEngine.occurrencesInRange(status.bill, monthStart, monthEnd).forEach { date ->
-                val key = CycleEngine.cycleKey(date)
-                val isPaid = key in paidKeys
-                val list = result.getOrPut(date.dayOfMonth) { mutableListOf() }
-                if (list.none { it.bill.id == status.bill.id }) {
-                    list.add(
-                        CalendarOccurrence(
-                            bill = status.bill,
-                            isPaid = isPaid,
-                            isOverdue = !isPaid && date.isBefore(todayDate),
-                            daysUntilDue = ChronoUnit.DAYS.between(todayDate, date).toInt()
-                        )
-                    )
-                }
-            }
-        }
-        result
+        BillCycles.rangeSnapshot(
+            bills = bills,
+            payments = payments,
+            start = monthStart,
+            endInclusive = monthStart.plusMonths(1).minusDays(1),
+            today = LocalDate.now(),
+            convert = viewModel::convertToDisplay
+        )
+    }
+    val billsByDay = remember(monthSnapshot) {
+        buildCalendarOccurrences(monthSnapshot)
     }
     val selectedBills = billsByDay[selectedDay].orEmpty()
     val selectedCalendar = Calendar.getInstance().apply {
@@ -202,7 +194,10 @@ fun CalendarScreen(
                     }
                 }
                 Text(
-                    "${privateAmount(summary.totalDue, summary.currency)} scheduled · ${summary.billCount} bills",
+                    "${privateAmount(monthSnapshot.totalDue, displayCurrency)} scheduled · " +
+                        if (monthSnapshot.occurrenceCount == 1) "1 due date" else {
+                            "${monthSnapshot.occurrenceCount} due dates"
+                        },
                     color = CatSubtext0,
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.fillMaxWidth(),
@@ -308,10 +303,10 @@ fun CalendarScreen(
 
             item {
                 CalendarMonthSummary(
-                    total = summary.totalDue,
-                    paid = summary.totalPaid,
-                    remaining = summary.remaining,
-                    currency = summary.currency
+                    total = monthSnapshot.totalDue,
+                    paid = monthSnapshot.totalPaid,
+                    remaining = monthSnapshot.remaining,
+                    currency = displayCurrency
                 )
             }
 
@@ -459,9 +454,26 @@ private fun CalendarMetric(label: String, value: String, color: Color, modifier:
 }
 
 /** One occurrence of a bill on one calendar day, with the state of that day rather than the bill. */
-private data class CalendarOccurrence(
+internal data class CalendarOccurrence(
     val bill: Bill,
+    val cycleKey: String,
     val isPaid: Boolean,
     val isOverdue: Boolean,
     val daysUntilDue: Int
 )
+
+internal fun buildCalendarOccurrences(
+    snapshot: CycleRangeSnapshot
+): Map<Int, List<CalendarOccurrence>> = snapshot.occurrences
+    .groupBy { it.cycle.date.dayOfMonth }
+    .mapValues { (_, occurrences) ->
+        occurrences.map { resolved ->
+            CalendarOccurrence(
+                bill = resolved.bill,
+                cycleKey = resolved.cycle.cycleKey,
+                isPaid = resolved.cycle.isPaid,
+                isOverdue = resolved.cycle.isOverdue,
+                daysUntilDue = resolved.cycle.daysUntilDue
+            )
+        }
+    }

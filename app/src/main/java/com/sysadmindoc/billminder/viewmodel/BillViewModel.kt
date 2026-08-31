@@ -7,7 +7,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.sysadmindoc.billminder.data.*
 import com.sysadmindoc.billminder.domain.BillCycles
+import com.sysadmindoc.billminder.domain.CycleRangeSnapshot
 import com.sysadmindoc.billminder.domain.CycleEngine
+import com.sysadmindoc.billminder.domain.ResolvedBillCycle
 import com.sysadmindoc.billminder.notification.ReminderScheduler
 import com.sysadmindoc.billminder.notification.NotificationHelper
 import com.sysadmindoc.billminder.notification.ReminderPrefs
@@ -45,10 +47,23 @@ data class MonthlySummary(
     val billCount: Int,
     val paidCount: Int,
     val overdueCount: Int,
+    val occurrenceCount: Int = billCount,
     val nextDueBill: BillWithStatus? = null,
     val allPaid: Boolean = false,
     val currency: String = "USD"
 )
+
+internal fun billStatusesFrom(cycles: List<ResolvedBillCycle>): List<BillWithStatus> =
+    cycles.map { resolved ->
+        BillWithStatus(
+            bill = resolved.bill,
+            nextDueDate = resolved.cycle.dueAt,
+            daysUntilDue = resolved.cycle.daysUntilDue,
+            isPaidThisCycle = resolved.cycle.isPaid,
+            isOverdue = resolved.cycle.isOverdue,
+            cycleKey = resolved.cycle.cycleKey
+        )
+    }
 
 data class ForecastData(
     val next30Days: Double = 0.0,
@@ -59,6 +74,33 @@ data class ForecastData(
     val next90Bills: Int = 0
 )
 
+internal fun forecastFrom(
+    snapshot: CycleRangeSnapshot,
+    convert: (Double, String) -> Double = { amount, _ -> amount }
+): ForecastData {
+    var total30 = 0.0
+    var total60 = 0.0
+    var total90 = 0.0
+    var count30 = 0
+    var count60 = 0
+    var count90 = 0
+    snapshot.occurrences.filterNot { it.cycle.isPaid }.forEach { occurrence ->
+        val amount = convert(occurrence.bill.amount, occurrence.bill.currency)
+        val daysOut = occurrence.cycle.daysUntilDue
+        if (daysOut <= 30) {
+            total30 += amount
+            count30++
+        }
+        if (daysOut <= 60) {
+            total60 += amount
+            count60++
+        }
+        total90 += amount
+        count90++
+    }
+    return ForecastData(total30, total60, total90, count30, count60, count90)
+}
+
 data class ChartData(
     val categoryBreakdown: List<Pair<BillCategory, Double>> = emptyList(),
     val monthlyTrend: List<Pair<String, Double>> = emptyList(),
@@ -68,6 +110,34 @@ data class ChartData(
     val currency: String = "USD",
     val cashFlow: List<MonthlyCashFlow> = emptyList()
 )
+
+internal fun monthlySummaryFrom(
+    snapshot: CycleRangeSnapshot,
+    currency: String
+): MonthlySummary {
+    val nextDue = snapshot.nextDue?.let { resolved ->
+        BillWithStatus(
+            bill = resolved.bill,
+            nextDueDate = resolved.cycle.dueAt,
+            daysUntilDue = resolved.cycle.daysUntilDue,
+            isPaidThisCycle = resolved.cycle.isPaid,
+            isOverdue = resolved.cycle.isOverdue,
+            cycleKey = resolved.cycle.cycleKey
+        )
+    }
+    return MonthlySummary(
+        totalDue = snapshot.totalDue,
+        totalPaid = snapshot.totalPaid,
+        remaining = snapshot.remaining,
+        billCount = snapshot.billCount,
+        paidCount = snapshot.paidCount,
+        overdueCount = snapshot.overdueCount,
+        occurrenceCount = snapshot.occurrenceCount,
+        nextDueBill = nextDue,
+        allPaid = snapshot.occurrenceCount > 0 && snapshot.paidCount == snapshot.occurrenceCount,
+        currency = currency
+    )
+}
 
 class BillViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -87,6 +157,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
     private val _displayCurrency = MutableStateFlow(CurrencyPrefs.getDisplayCurrency(application))
     val displayCurrency: StateFlow<String> = _displayCurrency.asStateFlow()
     private val _currencySettingsRevision = MutableStateFlow(0)
+    val currencySettingsRevision: StateFlow<Int> = _currencySettingsRevision.asStateFlow()
 
     /**
      * Deleted bills waiting on their undo window, keyed by bill id. More than one can be pending at
@@ -98,24 +169,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
     private fun statusesFor(billList: List<Bill>, paymentList: List<Payment>): List<BillWithStatus> {
         val zone = ZoneId.systemDefault()
         val today = LocalDate.now(zone)
-        val paidByBill = BillCycles.paidKeys(paymentList)
-        return billList.mapNotNull { bill ->
-            val cycle = BillCycles.resolve(
-                bill = bill,
-                paidKeys = paidByBill[bill.id].orEmpty(),
-                payments = paymentList,
-                today = today,
-                zone = zone
-            ) ?: return@mapNotNull null
-            BillWithStatus(
-                bill = bill,
-                nextDueDate = cycle.dueAt,
-                daysUntilDue = cycle.daysUntilDue,
-                isPaidThisCycle = cycle.isPaid,
-                isOverdue = cycle.isOverdue,
-                cycleKey = cycle.cycleKey
-            )
-        }
+        return billStatusesFrom(BillCycles.currentCycles(billList, paymentList, today, zone))
     }
 
     private suspend fun refreshExternalSurfaces() {
@@ -177,34 +231,19 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         val toDisplay: (Double, String) -> Double = { amount, currency ->
             CurrencyConverter.convert(amount, currency, targetCurrency, manualRates)
         }
-        val statuses = statusesFor(billList, paymentList)
-        val paid = statuses.filter { it.isPaidThisCycle }
-        val overdue = statuses.filter { it.isOverdue }
-        val totalDue = statuses.sumOf { toDisplay(it.bill.amount, it.bill.currency) }
-        val totalPaid = paid.sumOf { status ->
-            val payment = paymentList.firstOrNull {
-                it.billId == status.bill.id && it.cycleKey == status.cycleKey
-            }
-            if (payment == null) {
-                toDisplay(status.bill.amount, status.bill.currency)
-            } else {
-                toDisplay(payment.amount, payment.currency.ifBlank { status.bill.currency })
-            }
-        }
-        val nextDue = statuses.filter { !it.isPaidThisCycle && !it.isOverdue }
-            .minByOrNull { it.daysUntilDue }
-        val allPaid = statuses.isNotEmpty() && paid.size == statuses.size
-        MonthlySummary(
-            totalDue = totalDue,
-            totalPaid = totalPaid,
-            remaining = totalDue - totalPaid,
-            billCount = statuses.size,
-            paidCount = paid.size,
-            overdueCount = overdue.size,
-            nextDueBill = nextDue,
-            allPaid = allPaid,
-            currency = targetCurrency
+        val zone = ZoneId.systemDefault()
+        val today = LocalDate.now(zone)
+        val monthStart = today.withDayOfMonth(1)
+        val snapshot = BillCycles.rangeSnapshot(
+            bills = billList,
+            payments = paymentList,
+            start = monthStart,
+            endInclusive = monthStart.plusMonths(1).minusDays(1),
+            today = today,
+            zone = zone,
+            convert = toDisplay
         )
+        monthlySummaryFrom(snapshot, targetCurrency)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MonthlySummary(0.0, 0.0, 0.0, 0, 0, 0))
 
     // Chart data
@@ -253,8 +292,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
 
             val monthlyTrend = mutableListOf<Pair<String, Double>>()
             val monthNames = arrayOf("Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec")
-            var totalLast12 = 0.0
-            var monthsCounted = 0
+            val projectionMonths = mutableListOf<Double>()
             for (i in 11 downTo 0) {
                 val tCal = Calendar.getInstance().apply {
                     set(Calendar.DAY_OF_MONTH, 1)
@@ -274,40 +312,33 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
                     .sumOf { payment ->
                         val bill = billMap[payment.billId]
                         toDisplay(payment.amount, payment.currency.ifBlank { bill?.currency ?: "USD" })
-                    }
+                }
                 if (i < 6) monthlyTrend.add("${monthNames[m]} ${y % 100}" to total)
-                if (total > 0) { totalLast12 += total; monthsCounted++ }
+                projectionMonths += total
             }
 
             val lifetimeTotal = allPayments.sumOf { payment ->
                 val bill = billMap[payment.billId]
                 toDisplay(payment.amount, payment.currency.ifBlank { bill?.currency ?: "USD" })
             }
-            val yearlyProjection = if (monthsCounted > 0) (totalLast12 / monthsCounted) * 12 else 0.0
+            val yearlyProjection = SpendingProjection.annualized(projectionMonths)
 
             // Forecast: upcoming unpaid occurrences within 30/60/90 days
             val now = System.currentTimeMillis()
             val zone = ZoneId.systemDefault()
             val today = LocalDate.now(zone)
-            val paidByBill = BillCycles.paidKeys(allPayments)
-            var total30 = 0.0; var total60 = 0.0; var total90 = 0.0
-            var count30 = 0; var count60 = 0; var count90 = 0
-            allBills.filter { it.isEnabled }.forEach { bill ->
-                val amount = toDisplay(bill.amount, bill.currency)
-                BillCycles.unpaidOccurrences(
-                    bill = bill,
-                    paidKeys = paidByBill[bill.id].orEmpty(),
+            val forecast = forecastFrom(
+                BillCycles.rangeSnapshot(
+                    bills = allBills.filter(Bill::isEnabled),
+                    payments = allPayments,
                     start = today,
                     endInclusive = today.plusDays(90),
-                    zone = zone
-                ).forEach { date ->
-                    val daysOut = java.time.temporal.ChronoUnit.DAYS.between(today, date)
-                    if (daysOut <= 30) { total30 += amount; count30++ }
-                    if (daysOut <= 60) { total60 += amount; count60++ }
-                    total90 += amount; count90++
-                }
-            }
-            val forecast = ForecastData(total30, total60, total90, count30, count60, count90)
+                    today = today,
+                    zone = zone,
+                    convert = toDisplay
+                ),
+                toDisplay
+            )
             val cashFlow = CashFlowProjection.build(
                 allBills,
                 allPayments,

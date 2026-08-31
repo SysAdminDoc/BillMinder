@@ -8,6 +8,14 @@ import org.junit.Test
 
 class CashFlowProjectionTest {
     @Test
+    fun zeroSpendProducesAZeroFiniteAnnualProjection() {
+        val projection = SpendingProjection.annualized(List(12) { 0.0 })
+
+        assertEquals(0.0, projection, 0.0001)
+        assertTrue(projection.isFinite())
+    }
+
+    @Test
     fun alwaysReturnsTheNextTwelveCalendarMonths() {
         val now = Calendar.getInstance().apply {
             clear()

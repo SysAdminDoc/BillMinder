@@ -24,7 +24,7 @@ BillMinder keeps recurring bills, due dates, and payment history in one Android 
 - Variable amounts and percentage splits handle utility bills or shared household costs.
 - Each bill keeps its native currency. Dashboard totals use an offline FX snapshot with optional manual overrides.
 
-The Home page has search, category filters, due-state groups, and one-tap payment actions. Calendar shows the actual occurrences for each day. Insights covers category totals, budgets, forecasts, annual cost, and a paid-versus-outstanding plan.
+The Home page has search, category filters, due-state groups, and one-tap payment actions. Calendar shows the actual occurrences for each day. Monthly totals count every due occurrence, including all weekly dates, and stay aligned across Home, Calendar, forecasting, cash-flow planning, and widgets. Insights covers category totals, budgets, forecasts, annual cost, and a paid-versus-outstanding plan.
 
 ## Reminders
 

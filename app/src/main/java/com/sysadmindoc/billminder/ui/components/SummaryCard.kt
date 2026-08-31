@@ -92,7 +92,7 @@ fun SummaryCard(
                         maxLines = 1
                     )
                     Text(
-                        text = "${summary.paidCount} of ${summary.billCount} paid",
+                        text = "${summary.paidCount} of ${summary.occurrenceCount} paid",
                         style = MaterialTheme.typography.bodyMedium,
                         color = CatSubtext0
                     )
@@ -185,7 +185,7 @@ fun SummaryCard(
                 }
             }
 
-            if (summary.allPaid && summary.billCount > 0) {
+            if (summary.allPaid && summary.occurrenceCount > 0) {
                 HorizontalDivider(color = CatDivider)
                 Text(
                     text = "All bills paid this cycle",

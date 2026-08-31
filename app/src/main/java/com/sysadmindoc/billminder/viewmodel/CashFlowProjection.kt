@@ -43,7 +43,6 @@ object CashFlowProjection {
         }
         val paid = DoubleArray(12)
         val outstanding = DoubleArray(12)
-        val paidByBill = BillCycles.paidKeys(payments)
         val billCurrencies = bills.associate { it.id to it.currency }
 
         payments.forEach { payment ->
@@ -57,21 +56,25 @@ object CashFlowProjection {
         val zone = ZoneId.systemDefault()
         val windowStart = CycleEngine.toLocalDate(monthStarts.first().timeInMillis, zone)
         val windowEnd = windowStart.plusMonths(12).minusDays(1)
-        bills.filter { it.isEnabled }.forEach { bill ->
-            BillCycles.unpaidOccurrences(
-                bill = bill,
-                paidKeys = paidByBill[bill.id].orEmpty(),
-                start = windowStart,
-                endInclusive = windowEnd,
-                zone = zone
-            ).forEach { date ->
-                val monthIndex = ChronoUnit.MONTHS.between(
-                    YearMonth.from(windowStart),
-                    YearMonth.from(date)
-                ).toInt()
-                if (monthIndex in outstanding.indices) {
-                    outstanding[monthIndex] += toDisplay(bill.amount, bill.currency)
-                }
+        BillCycles.rangeSnapshot(
+            bills = bills.filter(Bill::isEnabled),
+            payments = payments,
+            start = windowStart,
+            endInclusive = windowEnd,
+            today = windowStart,
+            zone = zone,
+            convert = toDisplay
+        ).occurrences.filterNot { it.cycle.isPaid }.forEach { occurrence ->
+            val date = occurrence.cycle.date
+            val monthIndex = ChronoUnit.MONTHS.between(
+                YearMonth.from(windowStart),
+                YearMonth.from(date)
+            ).toInt()
+            if (monthIndex in outstanding.indices) {
+                outstanding[monthIndex] += toDisplay(
+                    occurrence.bill.amount,
+                    occurrence.bill.currency
+                )
             }
         }
 

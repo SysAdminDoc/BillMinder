@@ -4,6 +4,11 @@ All notable changes to BillMinder will be documented in this file.
 
 ## [Unreleased]
 
+- Home, Calendar, forecasts, cash-flow planning, and all three widgets now read the same cycle snapshot for dates, paid state, and due state.
+- Monthly totals count every occurrence in the month. Weekly bills can contribute four or five due dates, and the Calendar header follows the month being viewed.
+- Remaining balances now total the scheduled amounts of unpaid occurrences. A custom payment amount no longer changes what an unrelated unpaid cycle still needs.
+- Added one Room fixture that checks weekly, quarterly, and short-month cycles across every surface, plus a zero-spend annual projection check.
+- Refreshed the Home and Calendar screenshots with the shared monthly totals.
 - Added encrypted `.bmbak` backups that carry bills, cycle payments, split payees, supported settings, and receipt bytes in one portable file.
 - Backup files now have a documented schema, authenticated header, entry checksums, streaming size limits, and a preview before restore.
 - Restore can merge or replace data. Validation and database failures leave current records unchanged, restore prior preferences, and remove staged receipt files.

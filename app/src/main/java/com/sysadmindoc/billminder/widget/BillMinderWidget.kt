@@ -22,6 +22,7 @@ import com.sysadmindoc.billminder.data.CurrencyConverter
 import com.sysadmindoc.billminder.data.CurrencyFormatter
 import com.sysadmindoc.billminder.data.CurrencyPrefs
 import com.sysadmindoc.billminder.domain.BillCycles
+import com.sysadmindoc.billminder.domain.ResolvedBillCycle
 import com.sysadmindoc.billminder.security.PrivacyText
 import com.sysadmindoc.billminder.security.SecurityPrefs
 
@@ -36,32 +37,21 @@ class BillMinderWidget : GlanceAppWidget() {
         val privacyEnabled = SecurityPrefs.maskExternalContent(context)
 
         val payments = repo.getAllPaymentsForExport()
-        val upcoming = bills.mapNotNull { bill ->
-            val cycle = BillCycles.resolve(bill, payments) ?: return@mapNotNull null
-            WidgetBillItem(
-                name = bill.name,
-                amount = bill.amount,
-                daysUntilDue = cycle.daysUntilDue,
-                isPaid = cycle.isPaid,
-                isOverdue = cycle.isOverdue,
-                isAutoPay = bill.isAutoPay,
-                currency = bill.currency
-            )
-        }.filter { !it.isPaid }
-            .sortedBy { it.daysUntilDue }
-            .take(3)
-
-        val totalDue = upcoming.sumOf {
-            CurrencyConverter.convert(it.amount, it.currency, displayCurrency, manualRates)
-        }
+        val snapshot = upcomingWidgetSnapshotFrom(
+            BillCycles.currentCycles(bills, payments),
+            displayCurrency,
+            manualRates
+        )
 
         provideContent {
-            WidgetContent(upcoming, totalDue, displayCurrency, privacyEnabled)
+            WidgetContent(snapshot.items, snapshot.totalDue, displayCurrency, privacyEnabled)
         }
     }
 }
 
 data class WidgetBillItem(
+    val billId: Long,
+    val cycleKey: String,
     val name: String,
     val amount: Double,
     val daysUntilDue: Int,
@@ -70,6 +60,41 @@ data class WidgetBillItem(
     val isAutoPay: Boolean,
     val currency: String
 )
+
+internal data class UpcomingWidgetSnapshot(
+    val items: List<WidgetBillItem>,
+    val totalDue: Double
+)
+
+internal fun upcomingWidgetSnapshotFrom(
+    cycles: List<ResolvedBillCycle>,
+    displayCurrency: String,
+    manualRates: Map<String, Double> = emptyMap()
+): UpcomingWidgetSnapshot {
+    val items = cycles.map { resolved ->
+        val bill = resolved.bill
+        val cycle = resolved.cycle
+        WidgetBillItem(
+            billId = bill.id,
+            cycleKey = cycle.cycleKey,
+            name = bill.name,
+            amount = bill.amount,
+            daysUntilDue = cycle.daysUntilDue,
+            isPaid = cycle.isPaid,
+            isOverdue = cycle.isOverdue,
+            isAutoPay = bill.isAutoPay,
+            currency = bill.currency
+        )
+    }.filterNot(WidgetBillItem::isPaid)
+        .sortedWith(compareBy({ it.daysUntilDue }, { it.billId }))
+        .take(3)
+    return UpcomingWidgetSnapshot(
+        items = items,
+        totalDue = items.sumOf {
+            CurrencyConverter.convert(it.amount, it.currency, displayCurrency, manualRates)
+        }
+    )
+}
 
 @Composable
 private fun WidgetContent(

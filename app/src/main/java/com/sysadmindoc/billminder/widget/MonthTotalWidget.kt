@@ -22,7 +22,7 @@ import com.sysadmindoc.billminder.data.CurrencyConverter
 import com.sysadmindoc.billminder.data.CurrencyFormatter
 import com.sysadmindoc.billminder.data.CurrencyPrefs
 import com.sysadmindoc.billminder.domain.BillCycles
-import com.sysadmindoc.billminder.domain.CycleEngine
+import com.sysadmindoc.billminder.domain.CycleRangeSnapshot
 import com.sysadmindoc.billminder.security.PrivacyText
 import com.sysadmindoc.billminder.security.SecurityPrefs
 import java.text.SimpleDateFormat
@@ -43,49 +43,52 @@ class MonthTotalWidget : GlanceAppWidget() {
         val today = LocalDate.now()
         val monthStart = today.withDayOfMonth(1)
         val monthEnd = monthStart.plusMonths(1).minusDays(1)
-        val paidByBill = BillCycles.paidKeys(payments)
-
-        var totalDue = 0.0
-        var totalPaid = 0.0
-        var paidCount = 0
-        var totalCount = 0
-
-        bills.forEach { bill ->
-            val paidKeys = paidByBill[bill.id].orEmpty()
-            CycleEngine.occurrencesInRange(bill, monthStart, monthEnd).forEach { date ->
-                val key = CycleEngine.cycleKey(date)
-                totalDue += CurrencyConverter.convert(bill.amount, bill.currency, displayCurrency, manualRates)
-                totalCount++
-                if (key in paidKeys) {
-                    val payment = payments.firstOrNull { it.billId == bill.id && it.cycleKey == key }
-                    totalPaid += CurrencyConverter.convert(
-                        payment?.amount ?: bill.amount,
-                        payment?.currency?.ifBlank { bill.currency } ?: bill.currency,
-                        displayCurrency,
-                        manualRates
-                    )
-                    paidCount++
+        val month = monthTotalSnapshotFrom(
+            BillCycles.rangeSnapshot(
+                bills = bills,
+                payments = payments,
+                start = monthStart,
+                endInclusive = monthEnd,
+                today = today,
+                convert = { amount, currency ->
+                    CurrencyConverter.convert(amount, currency, displayCurrency, manualRates)
                 }
-            }
-        }
-
-        val remaining = totalDue - totalPaid
+            )
+        )
         val monthName = SimpleDateFormat("MMMM", Locale.getDefault()).format(Date())
 
         provideContent {
             MonthTotalContent(
                 monthName,
-                totalDue,
-                totalPaid,
-                remaining,
-                paidCount,
-                totalCount,
+                month.totalDue,
+                month.totalPaid,
+                month.remaining,
+                month.paidCount,
+                month.totalCount,
                 displayCurrency,
                 privacyEnabled
             )
         }
     }
 }
+
+internal data class MonthTotalSnapshot(
+    val cycles: List<Pair<Long, String>>,
+    val totalDue: Double,
+    val totalPaid: Double,
+    val remaining: Double,
+    val paidCount: Int,
+    val totalCount: Int
+)
+
+internal fun monthTotalSnapshotFrom(snapshot: CycleRangeSnapshot) = MonthTotalSnapshot(
+    cycles = snapshot.occurrences.map { it.bill.id to it.cycle.cycleKey },
+    totalDue = snapshot.totalDue,
+    totalPaid = snapshot.totalPaid,
+    remaining = snapshot.remaining,
+    paidCount = snapshot.paidCount,
+    totalCount = snapshot.occurrenceCount
+)
 
 @Composable
 private fun MonthTotalContent(

@@ -23,6 +23,7 @@ import com.sysadmindoc.billminder.MainActivity
 import com.sysadmindoc.billminder.data.BillDatabase
 import com.sysadmindoc.billminder.data.BillRepository
 import com.sysadmindoc.billminder.domain.BillCycles
+import com.sysadmindoc.billminder.domain.ResolvedBillCycle
 import com.sysadmindoc.billminder.security.PrivacyText
 import com.sysadmindoc.billminder.security.SecurityPrefs
 
@@ -31,13 +32,8 @@ class LockScreenWidget : GlanceAppWidget() {
         val repository = BillRepository(BillDatabase.getDatabase(context))
         val payments = repository.getAllPaymentsForExport()
         val privacyEnabled = SecurityPrefs.maskExternalContent(context)
-        var next: LockScreenBill? = null
-        for (bill in repository.getAllBillsList()) {
-            val cycle = BillCycles.resolve(bill, payments) ?: continue
-            if (!cycle.isPaid && (next == null || cycle.dueAt < next!!.dueDate)) {
-                next = LockScreenBill(bill.name, cycle.dueAt, true)
-            }
-        }
+        val bills = repository.getAllBillsList()
+        val next = lockScreenSnapshotFrom(BillCycles.currentCycles(bills, payments))
 
         provideContent {
             LockScreenWidgetContent(next, privacyEnabled)
@@ -45,11 +41,26 @@ class LockScreenWidget : GlanceAppWidget() {
     }
 }
 
-private data class LockScreenBill(
+internal data class LockScreenBill(
+    val billId: Long,
+    val cycleKey: String,
     val name: String,
     val dueDate: Long,
-    val isUnpaid: Boolean
+    val daysUntilDue: Int
 )
+
+internal fun lockScreenSnapshotFrom(cycles: List<ResolvedBillCycle>): LockScreenBill? =
+    cycles.filterNot { it.cycle.isPaid }
+        .minWithOrNull(compareBy({ it.cycle.dueAt }, { it.bill.id }))
+        ?.let { resolved ->
+            LockScreenBill(
+                billId = resolved.bill.id,
+                cycleKey = resolved.cycle.cycleKey,
+                name = resolved.bill.name,
+                dueDate = resolved.cycle.dueAt,
+                daysUntilDue = resolved.cycle.daysUntilDue
+            )
+        }
 
 @Composable
 private fun LockScreenWidgetContent(next: LockScreenBill?, privacyEnabled: Boolean) {
@@ -57,9 +68,7 @@ private fun LockScreenWidgetContent(next: LockScreenBill?, privacyEnabled: Boole
     val subtextColor = ColorProvider(Color(0xFFA6ADC8))
     val accentColor = ColorProvider(Color(0xFF89B4FA))
     val greenColor = ColorProvider(Color(0xFFA6E3A1))
-    val daysUntil = next?.let {
-        ((it.dueDate - System.currentTimeMillis()) / (24 * 60 * 60 * 1000L)).toInt()
-    }
+    val daysUntil = next?.daysUntilDue
     val dueLabel = when {
         daysUntil == null -> "No unpaid bills"
         daysUntil < 0 -> "${-daysUntil}d overdue"
