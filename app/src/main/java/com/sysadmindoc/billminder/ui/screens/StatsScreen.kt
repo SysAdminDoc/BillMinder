@@ -27,7 +27,6 @@ import androidx.compose.ui.unit.sp
 import com.sysadmindoc.billminder.data.BillCategory
 import com.sysadmindoc.billminder.data.BudgetMath
 import com.sysadmindoc.billminder.data.BudgetPrefs
-import com.sysadmindoc.billminder.data.CurrencyFormatter
 import com.sysadmindoc.billminder.data.Recurrence
 import com.sysadmindoc.billminder.ui.components.GroupDivider
 import com.sysadmindoc.billminder.ui.components.GroupedSurface
@@ -91,7 +90,7 @@ fun StatsScreen(viewModel: BillViewModel) {
                     Text("Lifetime spending", style = MaterialTheme.typography.labelLarge, color = CatSubtext0)
                     Spacer(Modifier.height(3.dp))
                     Text(
-                        CurrencyFormatter.format(chartData.lifetimeTotal, chartData.currency),
+                        privateAmount(chartData.lifetimeTotal, chartData.currency),
                         fontSize = 31.sp,
                         letterSpacing = (-0.7).sp,
                         fontWeight = FontWeight.Bold,
@@ -109,13 +108,13 @@ fun StatsScreen(viewModel: BillViewModel) {
                     Text("Annual total", style = MaterialTheme.typography.labelLarge, color = CatSubtext0)
                     Spacer(Modifier.height(3.dp))
                     Text(
-                        CurrencyFormatter.format(chartData.yearlyProjection, chartData.currency),
+                        privateAmount(chartData.yearlyProjection, chartData.currency),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = CatBlue
                     )
                     Text(
-                        "Avg ${CurrencyFormatter.format(chartData.yearlyProjection / 12.0, chartData.currency)} / month",
+                        "Avg ${privateAmount(chartData.yearlyProjection / 12.0, chartData.currency)} / month",
                         style = MaterialTheme.typography.bodySmall,
                         color = CatSubtext0
                     )
@@ -300,13 +299,13 @@ private fun CategoryBudgetsPanel(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(category.label, color = CatText, fontWeight = FontWeight.Medium)
                         Text(
-                            "${CurrencyFormatter.format(progress.spent, chartData.currency)} of ${CurrencyFormatter.format(progress.limit, chartData.currency)}",
+                            "${privateAmount(progress.spent, chartData.currency)} of ${privateAmount(progress.limit, chartData.currency)}",
                             style = MaterialTheme.typography.bodySmall,
                             color = if (progress.spent > progress.limit) CatRed else CatSubtext0
                         )
                     }
                     Text(
-                        if (progress.spent > progress.limit) "Over" else "${CurrencyFormatter.format(progress.remaining, chartData.currency)} left",
+                        if (progress.spent > progress.limit) "Over" else "${privateAmount(progress.remaining, chartData.currency)} left",
                         style = MaterialTheme.typography.labelMedium,
                         color = if (progress.spent > progress.limit) CatRed else CatGreen
                     )
@@ -387,7 +386,7 @@ private fun WhatIfPanel(viewModel: BillViewModel) {
                         color = CatGreen.copy(alpha = 0.15f)
                     ) {
                         Text(
-                            "Save ${CurrencyFormatter.format(annualSavings, displayCurrency)}/yr",
+                            "Save ${privateAmount(annualSavings, displayCurrency)}/yr",
                             color = CatGreen,
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
@@ -440,13 +439,13 @@ private fun WhatIfPanel(viewModel: BillViewModel) {
                     )
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
-                            "${CurrencyFormatter.format(displayAmount, displayCurrency)}/${bws.bill.recurrence.label.take(3).lowercase()}",
+                            "${privateAmount(displayAmount, displayCurrency)}/${bws.bill.recurrence.label.take(3).lowercase()}",
                             style = MaterialTheme.typography.labelMedium,
                             color = CatSubtext0
                         )
                         if (isDropped) {
                             Text(
-                                "-${CurrencyFormatter.format(yearlyAmount, displayCurrency)}/yr",
+                                "-${privateAmount(yearlyAmount, displayCurrency)}/yr",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = CatGreen,
                                 fontWeight = FontWeight.Bold
@@ -515,6 +514,7 @@ private fun PieChart(data: List<Pair<BillCategory, Double>>, modifier: Modifier 
 @Composable
 private fun TrendChart(data: List<Pair<String, Double>>, currency: String, modifier: Modifier = Modifier) {
     val maxVal = data.maxOfOrNull { it.second } ?: 1.0
+    val axisLabels = (0..3).map { privateAmount(maxVal * it / 3, currency) }
     val animatedProgress = remember { Animatable(0f) }
     LaunchedEffect(data) {
         animatedProgress.snapTo(0f)
@@ -544,7 +544,7 @@ private fun TrendChart(data: List<Pair<String, Double>>, currency: String, modif
                 end = Offset(size.width - 20f, y),
                 strokeWidth = 1f
             )
-            val label = CurrencyFormatter.format(maxVal * i / 3, currency)
+            val label = axisLabels[i]
             drawContext.canvas.nativeCanvas.drawText(label, 4f, y + 10f, textPaint)
         }
 
@@ -600,6 +600,7 @@ private fun CashFlowChart(
     modifier: Modifier = Modifier
 ) {
     val maxValue = data.maxOfOrNull { maxOf(it.paid, it.outstanding) }?.coerceAtLeast(1.0) ?: 1.0
+    val maxValueLabel = privateAmount(maxValue, currency)
     val animatedProgress = remember { Animatable(0f) }
     LaunchedEffect(data) {
         animatedProgress.snapTo(0f)
@@ -631,13 +632,13 @@ private fun CashFlowChart(
         }
         drawLine(CatOverlay0, Offset(padLeft, centerY), Offset(size.width - padRight, centerY), 2f)
         drawContext.canvas.nativeCanvas.drawText(
-            CurrencyFormatter.format(maxValue, currency),
+            maxValueLabel,
             2f,
             padTop + 8f,
             textPaint
         )
         drawContext.canvas.nativeCanvas.drawText(
-            CurrencyFormatter.format(maxValue, currency),
+            maxValueLabel,
             2f,
             size.height - padBottom + 8f,
             textPaint
@@ -689,7 +690,7 @@ private fun ForecastColumn(
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            CurrencyFormatter.format(amount, currency),
+            privateAmount(amount, currency),
             fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
             color = color,
@@ -720,7 +721,7 @@ private fun TopBillsPanel(
             TopBillRow(
                 status = largest,
                 eyebrow = "Largest bill",
-                value = CurrencyFormatter.format(convert(largest.bill.amount, largest.bill.currency), currency),
+                value = privateAmount(convert(largest.bill.amount, largest.bill.currency), currency),
                 supporting = largest.bill.category.label
             )
             GroupDivider()

@@ -23,11 +23,14 @@ import com.sysadmindoc.billminder.MainActivity
 import com.sysadmindoc.billminder.data.BillDatabase
 import com.sysadmindoc.billminder.data.BillRepository
 import com.sysadmindoc.billminder.domain.BillCycles
+import com.sysadmindoc.billminder.security.PrivacyText
+import com.sysadmindoc.billminder.security.SecurityPrefs
 
 class LockScreenWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val repository = BillRepository(BillDatabase.getDatabase(context))
         val payments = repository.getAllPaymentsForExport()
+        val privacyEnabled = SecurityPrefs.maskExternalContent(context)
         var next: LockScreenBill? = null
         for (bill in repository.getAllBillsList()) {
             val cycle = BillCycles.resolve(bill, payments) ?: continue
@@ -37,7 +40,7 @@ class LockScreenWidget : GlanceAppWidget() {
         }
 
         provideContent {
-            LockScreenWidgetContent(next)
+            LockScreenWidgetContent(next, privacyEnabled)
         }
     }
 }
@@ -49,7 +52,7 @@ private data class LockScreenBill(
 )
 
 @Composable
-private fun LockScreenWidgetContent(next: LockScreenBill?) {
+private fun LockScreenWidgetContent(next: LockScreenBill?, privacyEnabled: Boolean) {
     val textColor = ColorProvider(Color(0xFFCDD6F4))
     val subtextColor = ColorProvider(Color(0xFFA6ADC8))
     val accentColor = ColorProvider(Color(0xFF89B4FA))
@@ -87,7 +90,7 @@ private fun LockScreenWidgetContent(next: LockScreenBill?) {
         }
         Spacer(GlanceModifier.height(4.dp))
         Text(
-            next?.name ?: "All bills paid",
+            next?.let { PrivacyText.externalBillName(it.name, privacyEnabled) } ?: "All bills paid",
             style = TextStyle(
                 color = if (next == null) greenColor else textColor,
                 fontSize = 14.sp,

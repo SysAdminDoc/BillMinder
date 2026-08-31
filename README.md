@@ -1,12 +1,10 @@
-<p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-2.4.0-58A6FF?style=for-the-badge">
-  <img alt="License" src="https://img.shields.io/badge/license-MIT-4ade80?style=for-the-badge">
-  <img alt="Platform" src="https://img.shields.io/badge/platform-Android-58A6FF?style=for-the-badge">
-</p>
+![Version 2.4.0](https://img.shields.io/badge/version-2.4.0-58A6FF?style=for-the-badge)
+![MIT license](https://img.shields.io/badge/license-MIT-4ade80?style=for-the-badge)
+![Android](https://img.shields.io/badge/platform-Android-58A6FF?style=for-the-badge)
 
 # BillMinder v2.4.0
 
-A bill tracking and reminder app for Android. Never miss a payment again.
+BillMinder keeps recurring bills, due dates, and payment history in one Android app. It works offline and asks for no network permission.
 
 ## Screenshots
 
@@ -18,132 +16,90 @@ A bill tracking and reminder app for Android. Never miss a payment again.
 | --- | --- | --- |
 | ![Add bill form](docs/screenshots/v2.4.0/add-bill.png) | ![Bill details](docs/screenshots/v2.4.0/bill-detail.png) | ![Settings](docs/screenshots/v2.4.0/settings.png) |
 
-## Features
+## What it tracks
 
-### Core
-- **Bill Management**: Add, edit, delete bills with name, amount, due date, category, recurrence, notes, tags, and payment URL
-- **13 Categories**: Rent, Utilities, Insurance, Phone/Internet, Subscription, Loan, Medical, Transportation, Groceries, Education, Entertainment, Childcare, Other
-- **6 Recurrence Types**: Weekly, Bi-Weekly, Monthly, Quarterly, Yearly, One-Time
-- **Quick Mark Paid**: One-tap from home screen or notification
-- **Swipe-to-Delete**: Swipe left on any bill to delete
-- **Variable Amounts**: Track expected, minimum, and maximum amounts for utilities
-- **Split Bills**: Assign one bill across multiple payees with percentage share math
-- **Merchant Normalization**: Recognizes 400+ common statement aliases while preserving unknown names
-- **Multi-Currency**: Store each bill in its native currency, convert dashboard totals offline, and override FX rates manually
-- **Encrypted Receipt Attachments**: Attach an image or PDF when marking a payment paid; receipts stay encrypted in app-private storage
-- **Receipt OCR**: Read receipt images or the first PDF page locally to suggest the paid amount and date for review
-- **SMS Bill Proposals**: Opt-in local inbox scan that proposes one-time bills for user review
+- Bills can carry an amount, due date, category, notes, tags, a payment URL, and optional receipt files.
+- Six schedules cover weekly, biweekly, monthly, quarterly, yearly, and one-time bills. Every occurrence stays anchored to the date the user chose.
+- Payment history is tied to the exact occurrence. An unpaid cycle stays overdue instead of disappearing when the next cycle begins.
+- Variable amounts and percentage splits handle utility bills or shared household costs.
+- Each bill keeps its native currency. Dashboard totals use an offline FX snapshot with optional manual overrides.
 
-### Reminders (Alarm-Style)
-- **Exact Alarms**: Uses AlarmManager.setAlarmClock() for reliable delivery (same as alarm clock apps)
-- **7 Reminder Timings**: Day of, 1/2/3 days, 1/2 weeks, 1 month before
-- **Dual Reminders**: Two separate reminders per bill
-- **Snooze**: 1 hour or tomorrow snooze directly from notification
-- **Boot Persistence**: Reminders survive device restarts
-- **Overdue Notifications**: Persistent (non-dismissible) for overdue bills
-- **Cascading Reminders**: Dismissed reminders escalate at 4 hours, 24 hours, and overdue
-- **Full-Screen Alarm Option**: Opt-in alarm-style due screen with mark-paid, snooze, and dismiss actions
-- **Home Geofence**: Opt-in enter-and-dwell reminders around a configurable home radius (Play flavor)
-- **Vacation Mode**: Pause reminders for auto-pay bills while keeping manual-payment reminders active
-- **Calendar Handoff**: Add the next due date as an optional all-day event, including recurrence, to the user's calendar app
+The Home page has search, category filters, due-state groups, and one-tap payment actions. Calendar shows the actual occurrences for each day. Insights covers category totals, budgets, forecasts, annual cost, and a paid-versus-outstanding plan.
 
-### Dashboard
-- **Monthly Summary**: Total due, paid, remaining with animated progress bar
-- **Section Badges**: Overdue/Upcoming/Paid sections with count badges
-- **Search**: Full-text search across bill names, notes, and tags
-- **Sort**: By due date, amount, name, or category
-- **Filter**: Horizontal scrollable category filter chips
-- **Staggered Animations**: Bills animate in sequentially
+## Reminders
 
-### Calendar
-- **Monthly Calendar View**: Color-coded dots for bills on each day
-- **Day Detail**: Tap any day to see bills due
+BillMinder schedules two optional reminders per bill. Available timing ranges from the due day to one month ahead. Exact delivery is used when Android allows it, with a documented fallback when exact alarms are unavailable.
 
-### Stats & Charts
-- **Lifetime Spending**: Total across all bills
-- **Category Pie Chart**: Animated donut chart with legend
-- **Monthly Trend**: 6-month line chart with grid
-- **12-Month Plan**: Diverging paid-versus-outstanding view for upcoming bill cycles
-- **Category Budgets**: Set monthly caps per category and track them with progress rings
-- **Forecast**: 30/60/90-day upcoming totals
-- **What-If Planning**: Toggle recurring bills to preview annual savings
-- **Per-Bill Lifetime**: Total spent on each individual bill with average
+Notifications include Paid, one-hour snooze, and tomorrow actions. Unpaid bills get a separate overdue alert. Reminders are rebuilt after a reboot, app update, clock change, or timezone change.
 
-### Data
-- **JSON Backup/Restore**: Full export and import of all data
-- **CSV Export**: Payment history as spreadsheet
-- **CSV Import**: Preview a spreadsheet, map columns, learn repeated corrections after three confirmations, and import bills with optional payment history
-- **Migration Presets**: One-step column mappings for Mint, Tiller, and Empower transaction exports
-- **Year-End Export**: Tax-ready CSV grouped by category
-- **Currency-Aware Exports**: JSON and CSV preserve bill/payment currency codes
-- **Interchange Exports**: Generate Bluecoins advanced CSV, YNAB outflow/inflow CSV, or Actual Budget transaction CSV
-- **Room Database**: SQLite with migration support
+The full sideload build also has an optional alarm-style due screen and local SMS proposal scan. Shared payment text can be reviewed without granting inbox access.
 
-### Security
-- **Biometric Lock**: Fingerprint/face unlock to protect financial data
-- **PIN Fallback**: Salted PIN fallback with configurable auto-lock, screenshot protection, and duress mode
+## Privacy and security
 
-### Widget
-- **Home Screen Widget**: Glance-based widget showing upcoming bills, amounts, and days until due
-- **Widget Variants**: Next 3 bills and current-month payment progress widgets
-- **Wear OS Tile**: Shows the next unpaid bill and sends a one-tap mark-paid action back to the phone through the Wear Data Layer (Play flavor)
-- **Lock-Screen Widget**: Keyguard-capable compact due reminder that omits amounts for privacy
+- Biometric unlock requires a PIN fallback, so loss of biometric access cannot lock the user out.
+- PIN and duress PIN records use versioned PBKDF2-HMAC-SHA256 with a random salt and 600,000 rounds. Older PIN records migrate after the next successful entry.
+- Five incorrect entries start a persisted wait. Continued failures increase the delay up to one hour, while a successful PIN or biometric unlock clears it.
+- Screenshot protection follows the live lock setting. Turning security on applies it without restarting the app.
+- Private Notifications & Widgets replaces bill names and amounts on external surfaces. Hide Amounts in App masks financial values throughout the read-only UI.
+- Receipt images and PDFs stay encrypted in app-private storage. OCR runs on the device with the bundled ML Kit model.
 
-### UI/UX
-- **Bottom Navigation**: Home, Calendar, Insights, Settings tabs
-- **AMOLED Dark Theme**: Midnight ledger surfaces with blue, mint, amber, coral, and lilac status accents
-- **Edge-to-Edge**: Full immersive display
-- **Auto-Pay Tags**: Visual badge on auto-pay bills
+The app declares no internet or location permission. It has no analytics SDK, crash reporter, billing library, or bank connection.
 
-## Tech Stack
+## Data and portability
 
-- Kotlin 2.1.0 + Jetpack Compose + Material 3
-- Room 2.6.1 with migrations
-- AlarmManager for exact alarm-style reminders
-- Glance 1.1.1 for home screen widget
-- Wear Tiles 1.6.2 + Google Play services Wearable Data Layer for the companion tile
-- AndroidX Biometric for fingerprint/face lock
-- ML Kit bundled text recognition for on-device receipt OCR
-- Navigation Compose with bottom nav
-- Canvas-drawn pie chart and trend line (no chart libraries)
-- DataStore for preferences
-- F-Droid flavor excludes Play-only geofencing and Wear Data Layer code; the app has no Play billing or crash-reporting dependency.
-- Optional `READ_SMS` access is requested only from the explicit SMS proposal action; messages are parsed locally and never uploaded.
-- Receipt OCR uses the bundled on-device model; receipt files remain encrypted in app-private storage and OCR text is not uploaded.
+CSV import starts with a preview and supports learned column mappings plus Mint, Tiller, and Empower presets. Exports include payment CSV, year-end CSV, and formats for Bluecoins, YNAB, or Actual Budget.
 
-## Build
+The current JSON path exports bills and payment history. It does not yet include settings, split payees, or receipt bytes, so it should not be treated as a complete device backup.
+
+Room stores the live data and has explicit migrations for every shipped schema. An unreadable database is left untouched and shown through the recovery screen.
+
+## Current builds
+
+BillMinder is distributed as a sideloaded APK from GitHub Releases. The repository still has two phone flavors:
+
+- `fdroid` is the full build. It includes the local SMS scanner, full-screen reminders, and `USE_EXACT_ALARM`.
+- `play` omits those restricted permissions and accepts shared payment text instead.
+
+Neither flavor requests network access. Store publishing is not part of the release process.
+
+## Build locally
+
+Use JDK 21 and an Android SDK with API 36 installed.
 
 ```bash
-./gradlew assembleDebug
+./gradlew :app:assemblePlayDebug :app:assembleFdroidDebug
 ```
 
-APK output: `app/build/outputs/apk/debug/app-debug.apk`
+The APKs are written under:
 
-The open-source distribution variant can be built without Play-only integrations:
+```text
+app/build/outputs/apk/play/debug/
+app/build/outputs/apk/fdroid/debug/
+```
+
+Run the JVM suite and Android lint before installing a build:
 
 ```bash
-./gradlew :app:assembleFdroidDebug
+./gradlew test
+./gradlew lint
 ```
 
-### Release builds
+### Signed release APKs
 
-Signing credentials are not in the repository. Copy the template, fill in your own keystore details, and keep the result out of version control (it's already gitignored):
+Copy the signing template and enter credentials for a keystore you control:
 
 ```bash
 cp keystore.properties.example keystore.properties
 ```
 
-| Key | What it is |
-| --- | --- |
-| `storeFile` | Path to your keystore, relative to the repository root or absolute |
-| `storePassword` | Keystore password |
-| `keyAlias` | Alias of the signing key inside the keystore |
-| `keyPassword` | Password for that key |
-
-With those four values in place:
+The file is already ignored by Git. It accepts `storeFile`, `storePassword`, `keyAlias`, and `keyPassword`.
 
 ```bash
-./gradlew :app:assemblePlayRelease :app:assembleFdroidRelease :wear:assembleRelease
+./gradlew :app:assemblePlayRelease :app:assembleFdroidRelease
 ```
 
-Both app flavors and the Wear companion sign with the same key, which the Wear Data Layer requires. Without `keystore.properties`, any release task stops immediately with a message pointing at the template rather than producing an unsigned APK.
+Both tasks stop with a direct error when signing details are missing. A successful build creates signed, minified APKs in each flavor's `release` directory.
+
+## License
+
+BillMinder is available under the [MIT License](LICENSE).

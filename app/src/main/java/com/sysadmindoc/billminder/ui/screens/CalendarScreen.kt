@@ -50,7 +50,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.sysadmindoc.billminder.data.CurrencyFormatter
 import com.sysadmindoc.billminder.ui.components.GroupDivider
 import com.sysadmindoc.billminder.ui.components.GroupedSurface
 import com.sysadmindoc.billminder.ui.components.IconWell
@@ -63,6 +62,7 @@ import com.sysadmindoc.billminder.ui.theme.CatRed
 import com.sysadmindoc.billminder.ui.theme.CatSubtext0
 import com.sysadmindoc.billminder.ui.theme.CatSubtext1
 import com.sysadmindoc.billminder.ui.theme.CatSurface0
+import com.sysadmindoc.billminder.ui.theme.privateAmount
 import com.sysadmindoc.billminder.ui.theme.CatText
 import com.sysadmindoc.billminder.ui.theme.storedBillColor
 import com.sysadmindoc.billminder.viewmodel.BillViewModel
@@ -202,7 +202,7 @@ fun CalendarScreen(
                     }
                 }
                 Text(
-                    "${CurrencyFormatter.format(summary.totalDue, summary.currency)} scheduled · ${summary.billCount} bills",
+                    "${privateAmount(summary.totalDue, summary.currency)} scheduled · ${summary.billCount} bills",
                     color = CatSubtext0,
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.fillMaxWidth(),
@@ -271,7 +271,7 @@ fun CalendarScreen(
                             if (selectedBills.isEmpty()) {
                                 "No bills scheduled"
                             } else {
-                                "${selectedBills.size} bill${if (selectedBills.size == 1) "" else "s"} · ${CurrencyFormatter.format(selectedTotal, displayCurrency)}"
+                                "${selectedBills.size} bill${if (selectedBills.size == 1) "" else "s"} · ${privateAmount(selectedTotal, displayCurrency)}"
                             },
                             color = CatSubtext0,
                             style = MaterialTheme.typography.bodyMedium
@@ -404,7 +404,7 @@ private fun CalendarBillRow(status: CalendarOccurrence, onClick: () -> Unit) {
             Text(stateLabel, color = stateColor, style = MaterialTheme.typography.labelMedium)
         }
         Text(
-            CurrencyFormatter.format(status.bill.amount, status.bill.currency),
+            privateAmount(status.bill.amount, status.bill.currency),
             color = CatText,
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = FontWeight.Bold
@@ -440,11 +440,11 @@ private fun LegendItem(color: Color, label: String) {
 private fun CalendarMonthSummary(total: Double, paid: Double, remaining: Double, currency: String) {
     GroupedSurface(contentPadding = PaddingValues(vertical = 14.dp)) {
         Row(modifier = Modifier.fillMaxWidth()) {
-            CalendarMetric("Scheduled", CurrencyFormatter.format(total, currency), CatText, Modifier.weight(1f))
+            CalendarMetric("Scheduled", privateAmount(total, currency), CatText, Modifier.weight(1f))
             Box(Modifier.width(1.dp).height(46.dp).background(CatDivider))
-            CalendarMetric("Paid", CurrencyFormatter.format(paid, currency), CatGreen, Modifier.weight(1f))
+            CalendarMetric("Paid", privateAmount(paid, currency), CatGreen, Modifier.weight(1f))
             Box(Modifier.width(1.dp).height(46.dp).background(CatDivider))
-            CalendarMetric("Remaining", CurrencyFormatter.format(remaining, currency), CatBlue, Modifier.weight(1f))
+            CalendarMetric("Remaining", privateAmount(remaining, currency), CatBlue, Modifier.weight(1f))
         }
     }
 }

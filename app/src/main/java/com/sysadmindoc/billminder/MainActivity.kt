@@ -3,6 +3,7 @@ package com.sysadmindoc.billminder
 import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -28,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
@@ -38,14 +40,17 @@ import com.sysadmindoc.billminder.data.CurrencyFormatter
 import com.sysadmindoc.billminder.data.SmsBillCandidate
 import com.sysadmindoc.billminder.data.SmsBillParser
 import com.sysadmindoc.billminder.data.DatabaseHealth
+import com.sysadmindoc.billminder.security.PinUnlockResult
 import com.sysadmindoc.billminder.security.SecurityPrefs
+import com.sysadmindoc.billminder.security.SecurityState
 import com.sysadmindoc.billminder.ui.screens.*
 import com.sysadmindoc.billminder.ui.theme.*
 import com.sysadmindoc.billminder.viewmodel.BillViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
-import java.util.concurrent.Executors
 
 class MainActivity : FragmentActivity() {
 
@@ -56,40 +61,37 @@ class MainActivity : FragmentActivity() {
     private var isUnlocked = mutableStateOf(false)
     private var biometricAvailable = false
     private var lastActiveTime = 0L
+    private val securityPreferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+        runOnUiThread { applyWindowSecurity() }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         requestNotificationPermission()
+        SecurityPrefs.prefs(this).registerOnSharedPreferenceChangeListener(securityPreferenceListener)
+        applyWindowSecurity()
 
         biometricAvailable = BiometricManager.from(this)
             .canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.BIOMETRIC_WEAK) == BiometricManager.BIOMETRIC_SUCCESS
 
-        val biometricEnabled = SecurityPrefs.isBiometricEnabled(this)
-        val pinSet = SecurityPrefs.hasPin(this)
-
-        // Prevent screenshots in app switcher when security is enabled
-        if (biometricEnabled || pinSet) {
-            window.setFlags(
-                WindowManager.LayoutParams.FLAG_SECURE,
-                WindowManager.LayoutParams.FLAG_SECURE
-            )
-        }
-
-        if (biometricEnabled && biometricAvailable) {
-            promptBiometric()
-        } else if (pinSet) {
-            // PIN-only mode, will show PIN entry
-        } else {
-            isUnlocked.value = true
-        }
-
         setContent {
             BillMinderTheme {
                 val unlocked by isUnlocked
-                var pinConfigured by remember { mutableStateOf(pinSet) }
+                val securityState by SecurityPrefs.observe(this@MainActivity).collectAsStateWithLifecycle(
+                    initialValue = SecurityPrefs.readState(this@MainActivity)
+                )
                 var duressMode by remember { mutableStateOf(false) }
                 var databaseHealth by remember { mutableStateOf<DatabaseHealth?>(null) }
+
+                LaunchedEffect(securityState.lockConfigured) {
+                    if (!securityState.lockConfigured) duressMode = false
+                }
+                LaunchedEffect(securityState.biometricEnabled, biometricAvailable) {
+                    if (!isUnlocked.value && securityState.biometricEnabled && biometricAvailable) {
+                        promptBiometric()
+                    }
+                }
 
                 LaunchedEffect(Unit) {
                     databaseHealth = withContext(Dispatchers.IO) { BillDatabase.checkHealth(this@MainActivity) }
@@ -102,51 +104,58 @@ class MainActivity : FragmentActivity() {
                     onDispose { removeOnNewIntentListener(listener) }
                 }
 
-                val health = databaseHealth
-                // Nothing touches the database until the check finishes: building the nav host
-                // first would open it through the view model and crash before this can render.
-                if (health == null) {
-                    Surface(color = CatCrust, modifier = Modifier.fillMaxSize()) {}
-                } else if (health is DatabaseHealth.Unusable) {
-                    DatabaseRecoveryScreen(health.reason, health.databasePath)
-                } else if (unlocked) {
-                    if (duressMode) {
-                        DecoyScreen()
+                CompositionLocalProvider(LocalHideAmounts provides securityState.hideAmountsInApp) {
+                    val health = databaseHealth
+                    // Nothing touches the database until the check finishes: building the nav host
+                    // first would open it through the view model and crash before this can render.
+                    if (health == null) {
+                        Surface(color = CatCrust, modifier = Modifier.fillMaxSize()) {}
+                    } else if (health is DatabaseHealth.Unusable) {
+                        DatabaseRecoveryScreen(health.reason, health.databasePath)
+                    } else if (unlocked) {
+                        if (duressMode) {
+                            DecoyScreen()
+                        } else {
+                            BillMinderNavHost(
+                                biometricAvailable = biometricAvailable,
+                                securityState = securityState,
+                                onToggleBiometric = { enabled ->
+                                    SecurityPrefs.setBiometricEnabled(this@MainActivity, enabled)
+                                },
+                                sharedMessage = sharedMessage,
+                                onSharedMessageHandled = { sharedMessage = null }
+                            )
+                        }
                     } else {
-                        BillMinderNavHost(
-                            biometricAvailable = biometricAvailable,
-                            isBiometricEnabled = biometricEnabled,
-                            onToggleBiometric = { enabled ->
-                                SecurityPrefs.setBiometricEnabled(this, enabled)
+                        LockScreen(
+                            onUnlock = {
+                                if (biometricAvailable && securityState.biometricEnabled) {
+                                    promptBiometric()
+                                }
                             },
-                            onPinConfigured = { pinConfigured = true },
-                            sharedMessage = sharedMessage,
-                            onSharedMessageHandled = { sharedMessage = null }
+                            showBiometric = biometricAvailable && securityState.biometricEnabled,
+                            showPin = securityState.hasPin,
+                            blockedUntilMillis = securityState.pinBlockedUntilMillis,
+                            onPinSubmit = { enteredPin ->
+                                val result = withContext(Dispatchers.Default) {
+                                    SecurityPrefs.attemptUnlock(this@MainActivity, enteredPin)
+                                }
+                                when (result) {
+                                    PinUnlockResult.Duress -> {
+                                        duressMode = true
+                                        isUnlocked.value = true
+                                    }
+                                    PinUnlockResult.Unlocked -> {
+                                        duressMode = false
+                                        isUnlocked.value = true
+                                    }
+                                    is PinUnlockResult.Blocked,
+                                    is PinUnlockResult.Incorrect -> Unit
+                                }
+                                result
+                            }
                         )
                     }
-                } else {
-                    LockScreen(
-                        onUnlock = {
-                            if (biometricAvailable && biometricEnabled) {
-                                promptBiometric()
-                            }
-                        },
-                        showBiometric = biometricAvailable && biometricEnabled,
-                        showPin = pinConfigured,
-                        onPinSubmit = { enteredPin ->
-                            if (SecurityPrefs.verifyDuressPin(this, enteredPin)) {
-                                duressMode = true
-                                isUnlocked.value = true
-                                true
-                            } else {
-                                val isValid = SecurityPrefs.verifyPin(this, enteredPin)
-                                if (isValid) {
-                                    isUnlocked.value = true
-                                }
-                                isValid
-                            }
-                        }
-                    )
                 }
             }
         }
@@ -155,28 +164,38 @@ class MainActivity : FragmentActivity() {
     override fun onPause() {
         super.onPause()
         lastActiveTime = System.currentTimeMillis()
-        val biometricEnabled = SecurityPrefs.isBiometricEnabled(this)
-        val pinSet = SecurityPrefs.hasPin(this)
-        val securityEnabled = (biometricEnabled && biometricAvailable) || pinSet
-        if (securityEnabled && SecurityPrefs.getAutoLockMinutes(this) == 0) {
+        val securityState = SecurityPrefs.readState(this)
+        if (securityState.lockConfigured && securityState.autoLockMinutes == 0) {
             isUnlocked.value = false
+        }
+    }
+
+    override fun onDestroy() {
+        SecurityPrefs.prefs(this).unregisterOnSharedPreferenceChangeListener(securityPreferenceListener)
+        super.onDestroy()
+    }
+
+    private fun applyWindowSecurity() {
+        if (SecurityPrefs.readState(this).lockConfigured) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            isUnlocked.value = true
         }
     }
 
     override fun onResume() {
         super.onResume()
         if (isUnlocked.value && lastActiveTime > 0) {
-            val autoLockMinutes = SecurityPrefs.getAutoLockMinutes(this)
-            val biometricEnabled = SecurityPrefs.isBiometricEnabled(this)
-            val pinSet = SecurityPrefs.hasPin(this)
-            val securityEnabled = (biometricEnabled && biometricAvailable) || pinSet
+            val securityState = SecurityPrefs.readState(this)
+            val autoLockMinutes = securityState.autoLockMinutes
 
-            if (securityEnabled && autoLockMinutes >= 0) {
+            if (securityState.lockConfigured && autoLockMinutes >= 0) {
                 val elapsed = System.currentTimeMillis() - lastActiveTime
                 val timeoutMs = autoLockMinutes * 60 * 1000L
                 if (elapsed > timeoutMs) {
                     isUnlocked.value = false
-                    if (biometricEnabled && biometricAvailable) {
+                    if (securityState.biometricEnabled && biometricAvailable) {
                         promptBiometric()
                     }
                 }
@@ -185,19 +204,21 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun promptBiometric() {
-        val executor = Executors.newSingleThreadExecutor()
+        if (!SecurityPrefs.isBiometricEnabled(this) || !biometricAvailable) return
+        val executor = ContextCompat.getMainExecutor(this)
         val prompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                runOnUiThread { isUnlocked.value = true }
+                SecurityPrefs.resetFailedAttempts(this@MainActivity)
+                isUnlocked.value = true
             }
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                runOnUiThread { isUnlocked.value = false }
+                isUnlocked.value = false
             }
         })
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
             .setTitle("BillMinder")
             .setSubtitle("Authenticate to access your bills")
-            .setNegativeButtonText("Cancel")
+            .setNegativeButtonText("Use PIN")
             .build()
         prompt.authenticate(promptInfo)
     }
@@ -218,10 +239,24 @@ private fun LockScreen(
     onUnlock: () -> Unit,
     showBiometric: Boolean = true,
     showPin: Boolean = false,
-    onPinSubmit: ((String) -> Boolean)? = null
+    blockedUntilMillis: Long = 0L,
+    onPinSubmit: (suspend (String) -> PinUnlockResult)? = null
 ) {
     var pinEntry by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf(false) }
+    var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var authenticating by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val isBlocked = blockedUntilMillis > nowMillis
+    val retrySeconds = ((blockedUntilMillis - nowMillis + 999L) / 1_000L).coerceAtLeast(0L)
+
+    LaunchedEffect(blockedUntilMillis) {
+        nowMillis = System.currentTimeMillis()
+        while (blockedUntilMillis > nowMillis) {
+            delay(1_000L)
+            nowMillis = System.currentTimeMillis()
+        }
+    }
 
     Box(
         modifier = Modifier.fillMaxSize().background(CatCrust),
@@ -264,6 +299,7 @@ private fun LockScreen(
                         pinEntry = v.filter { it.isDigit() }.take(6)
                         pinError = false
                     },
+                    enabled = !isBlocked && !authenticating,
                     singleLine = true,
                     visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
@@ -279,23 +315,42 @@ private fun LockScreen(
                     placeholder = { Text("Enter PIN", color = CatOverlay0) },
                     modifier = Modifier.width(200.dp)
                 )
-                if (pinError) {
+                if (pinError || isBlocked) {
                     Spacer(Modifier.height(4.dp))
-                    Text("Incorrect PIN", color = CatRed, style = MaterialTheme.typography.labelSmall)
+                    Text(
+                        if (isBlocked) "Try again in ${retrySeconds}s" else "Incorrect PIN",
+                        color = CatRed,
+                        style = MaterialTheme.typography.labelSmall
+                    )
                 }
                 Spacer(Modifier.height(12.dp))
                 Button(
                     onClick = {
-                        val success = onPinSubmit?.invoke(pinEntry) ?: false
-                        if (!success) {
-                            pinError = true
+                        scope.launch {
+                            authenticating = true
+                            when (onPinSubmit?.invoke(pinEntry)) {
+                                PinUnlockResult.Unlocked,
+                                PinUnlockResult.Duress -> pinError = false
+                                is PinUnlockResult.Blocked,
+                                is PinUnlockResult.Incorrect,
+                                null -> pinError = true
+                            }
                             pinEntry = ""
+                            authenticating = false
                         }
                     },
-                    enabled = pinEntry.length >= 4,
+                    enabled = pinEntry.length >= 4 && !isBlocked && !authenticating,
                     colors = ButtonDefaults.buttonColors(containerColor = CatBlue, contentColor = CatCrust)
                 ) {
-                    Text("Submit")
+                    if (authenticating) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = CatCrust
+                        )
+                    } else {
+                        Text("Submit")
+                    }
                 }
             }
         }
@@ -328,16 +383,14 @@ enum class BottomTab(val label: String, val icon: ImageVector) {
 @Composable
 fun BillMinderNavHost(
     biometricAvailable: Boolean,
-    isBiometricEnabled: Boolean,
+    securityState: SecurityState,
     onToggleBiometric: (Boolean) -> Unit,
-    onPinConfigured: () -> Unit,
     sharedMessage: String? = null,
     onSharedMessageHandled: () -> Unit = {}
 ) {
     val navController = rememberNavController()
     val viewModel: BillViewModel = viewModel()
 
-    var biometricState by remember { mutableStateOf(isBiometricEnabled) }
     var selectedTab by remember { mutableStateOf(BottomTab.HOME) }
 
     // A message the user shared into the app. Reading one is how the Play build proposes a bill
@@ -456,12 +509,9 @@ fun BillMinderNavHost(
             composable("settings") {
                 SettingsScreen(
                     viewModel = viewModel,
-                    isBiometricEnabled = biometricState && biometricAvailable,
-                    onToggleBiometric = { enabled ->
-                        biometricState = enabled
-                        onToggleBiometric(enabled)
-                    },
-                    onPinConfigured = onPinConfigured
+                    biometricAvailable = biometricAvailable,
+                    securityState = securityState,
+                    onToggleBiometric = onToggleBiometric
                 )
             }
 

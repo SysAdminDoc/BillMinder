@@ -43,7 +43,9 @@ import com.sysadmindoc.billminder.data.SmsBillCandidate
 import com.sysadmindoc.billminder.DistributionFeatures
 import com.sysadmindoc.billminder.notification.ReminderPermissions
 import com.sysadmindoc.billminder.notification.ReminderPrefs
+import com.sysadmindoc.billminder.notification.NotificationHelper
 import com.sysadmindoc.billminder.security.SecurityPrefs
+import com.sysadmindoc.billminder.security.SecurityState
 import com.sysadmindoc.billminder.ui.components.GroupDivider
 import com.sysadmindoc.billminder.ui.components.GroupedSurface
 import com.sysadmindoc.billminder.ui.components.SectionHeading
@@ -51,15 +53,20 @@ import com.sysadmindoc.billminder.ui.components.SettingsStyleRow
 import com.sysadmindoc.billminder.ui.components.SquareToggle
 import com.sysadmindoc.billminder.ui.theme.*
 import com.sysadmindoc.billminder.viewmodel.BillViewModel
+import com.sysadmindoc.billminder.widget.WidgetUpdater
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun SettingsScreen(
     viewModel: BillViewModel,
-    isBiometricEnabled: Boolean,
-    onToggleBiometric: (Boolean) -> Unit,
-    onPinConfigured: () -> Unit = {}
+    biometricAvailable: Boolean,
+    securityState: SecurityState,
+    onToggleBiometric: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
+    val settingsScope = rememberCoroutineScope()
     val displayCurrency by viewModel.displayCurrency.collectAsState()
     var showCurrencyMenu by remember { mutableStateOf(false) }
     var showFxRates by remember { mutableStateOf(false) }
@@ -151,12 +158,11 @@ fun SettingsScreen(
     val currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
     var yearEndYear by remember { mutableIntStateOf(currentYear) }
     var showYearPicker by remember { mutableStateOf(false) }
-    var hasPinSet by remember { mutableStateOf(SecurityPrefs.hasPin(context)) }
-    var hasDuressPin by remember { mutableStateOf(SecurityPrefs.hasDuressPin(context)) }
     var showPinSetup by remember { mutableStateOf(false) }
     var showDuressPinSetup by remember { mutableStateOf(false) }
+    var enableBiometricAfterPin by remember { mutableStateOf(false) }
     var showAutoLockMenu by remember { mutableStateOf(false) }
-    var autoLockMinutes by remember { mutableIntStateOf(SecurityPrefs.getAutoLockMinutes(context)) }
+    val autoLockMinutes = securityState.autoLockMinutes
     val autoLockLabel = when (autoLockMinutes) {
         0 -> "Immediately"
         1 -> "1 minute"
@@ -281,9 +287,42 @@ fun SettingsScreen(
         SettingsToggle(
             icon = Icons.Filled.Fingerprint,
             title = "Biometric Lock",
-            subtitle = "Require fingerprint/face to open app",
-            checked = isBiometricEnabled,
-            onCheckedChange = onToggleBiometric
+            subtitle = when {
+                !biometricAvailable -> "Biometric hardware is unavailable. PIN access stays active."
+                !securityState.hasPin -> "Set a PIN fallback before enabling biometric unlock"
+                else -> "Require fingerprint or face, with PIN fallback"
+            },
+            checked = securityState.biometricEnabled,
+            onCheckedChange = { enabled ->
+                when {
+                    enabled && !biometricAvailable -> {
+                        Toast.makeText(context, "Biometric unlock isn't available on this device", Toast.LENGTH_LONG).show()
+                    }
+                    enabled && !securityState.hasPin -> {
+                        enableBiometricAfterPin = true
+                        showPinSetup = true
+                    }
+                    else -> onToggleBiometric(enabled)
+                }
+            }
+        )
+        SettingsToggle(
+            icon = Icons.Filled.NotificationsOff,
+            title = "Private Notifications & Widgets",
+            subtitle = "Hide bill names and amounts outside the app",
+            checked = securityState.maskExternalContent,
+            onCheckedChange = { enabled ->
+                SecurityPrefs.setMaskExternalContent(context, enabled)
+                if (enabled) NotificationHelper.cancelDisplayed(context)
+                settingsScope.launch { WidgetUpdater.updateAll(context) }
+            }
+        )
+        SettingsToggle(
+            icon = Icons.Filled.VisibilityOff,
+            title = "Hide Amounts in App",
+            subtitle = "Replace financial amounts with dots until this is turned off",
+            checked = securityState.hideAmountsInApp,
+            onCheckedChange = { SecurityPrefs.setHideAmountsInApp(context, it) }
         )
         SettingsRow(
             icon = if (reminderPermissions.remindersWillArrive) {
@@ -330,17 +369,18 @@ fun SettingsScreen(
 
         SettingsRow(
             icon = Icons.Filled.Pin,
-            title = if (hasPinSet) "Change PIN" else "Set PIN Fallback",
-            subtitle = if (hasPinSet) "PIN is set. Tap to change." else "Set a PIN as backup for biometric"
+            title = if (securityState.hasPin) "Change PIN" else "Set PIN Fallback",
+            subtitle = if (securityState.hasPin) "PIN is set. Tap to change." else "Set a PIN as backup for biometric"
         ) {
+            enableBiometricAfterPin = false
             showPinSetup = true
         }
 
-        if (hasPinSet) {
+        if (securityState.hasPin) {
             SettingsRow(
                 icon = Icons.Filled.VisibilityOff,
-                title = if (hasDuressPin) "Change Duress PIN" else "Set Duress PIN",
-                subtitle = if (hasDuressPin) {
+                title = if (securityState.hasDuressPin) "Change Duress PIN" else "Set Duress PIN",
+                subtitle = if (securityState.hasDuressPin) {
                     "Opens an empty decoy view when entered"
                 } else {
                     "Optional emergency PIN that hides your bills"
@@ -350,7 +390,7 @@ fun SettingsScreen(
             }
         }
 
-        if (hasPinSet || isBiometricEnabled) {
+        if (securityState.lockConfigured) {
             Box {
                 SettingsRow(
                     icon = Icons.Filled.Timer,
@@ -378,7 +418,6 @@ fun SettingsScreen(
                                 )
                             },
                             onClick = {
-                                autoLockMinutes = minutes
                                 SecurityPrefs.setAutoLockMinutes(context, minutes)
                                 showAutoLockMenu = false
                             }
@@ -391,14 +430,17 @@ fun SettingsScreen(
 
         if (showPinSetup) {
             PinSetupDialog(
+                conflictError = "PIN must differ from your duress PIN",
                 onDismiss = { showPinSetup = false },
                 onPinSet = { pin ->
-                    SecurityPrefs.setPin(context, pin)
-                    hasPinSet = true
-                    onPinConfigured()
-                    showPinSetup = false
-                    Toast.makeText(context, "PIN set successfully", Toast.LENGTH_SHORT).show()
-                    true
+                    val saved = withContext(Dispatchers.Default) { SecurityPrefs.setPin(context, pin) }
+                    if (saved) {
+                        if (enableBiometricAfterPin) onToggleBiometric(true)
+                        enableBiometricAfterPin = false
+                        showPinSetup = false
+                        Toast.makeText(context, "PIN set successfully", Toast.LENGTH_SHORT).show()
+                    }
+                    saved
                 }
             )
         }
@@ -408,9 +450,8 @@ fun SettingsScreen(
                 title = "Set Duress PIN",
                 onDismiss = { showDuressPinSetup = false },
                 onPinSet = { pin ->
-                    val saved = SecurityPrefs.setDuressPin(context, pin)
+                    val saved = withContext(Dispatchers.Default) { SecurityPrefs.setDuressPin(context, pin) }
                     if (saved) {
-                        hasDuressPin = true
                         showDuressPinSetup = false
                         Toast.makeText(context, "Duress PIN set successfully", Toast.LENGTH_SHORT).show()
                     }
@@ -654,13 +695,16 @@ private fun SettingsToggle(
 @Composable
 private fun PinSetupDialog(
     title: String = "Set PIN",
+    conflictError: String = "Duress PIN must differ from your regular PIN",
     onDismiss: () -> Unit,
-    onPinSet: (String) -> Boolean
+    onPinSet: suspend (String) -> Boolean
 ) {
     var pin by remember { mutableStateOf("") }
     var confirmPin by remember { mutableStateOf("") }
     var step by remember { mutableIntStateOf(1) }
     var error by remember { mutableStateOf<String?>(null) }
+    var saving by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -687,6 +731,7 @@ private fun PinSetupDialog(
                         if (step == 1) pin = filtered else confirmPin = filtered
                         error = null
                     },
+                    enabled = !saving,
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
@@ -708,6 +753,7 @@ private fun PinSetupDialog(
         },
         confirmButton = {
             TextButton(
+                enabled = !saving,
                 onClick = {
                     if (step == 1) {
                         if (pin.length < 4) {
@@ -719,14 +765,28 @@ private fun PinSetupDialog(
                         if (confirmPin != pin) {
                             error = "PINs don't match"
                             confirmPin = ""
-                        } else if (!onPinSet(pin)) {
-                            error = "Duress PIN must differ from your regular PIN"
-                            confirmPin = ""
+                        } else {
+                            scope.launch {
+                                saving = true
+                                if (!onPinSet(pin)) {
+                                    error = conflictError
+                                    confirmPin = ""
+                                }
+                                saving = false
+                            }
                         }
                     }
                 }
             ) {
-                Text(if (step == 1) "Next" else "Set PIN", color = CatBlue)
+                if (saving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = CatBlue
+                    )
+                } else {
+                    Text(if (step == 1) "Next" else "Set PIN", color = CatBlue)
+                }
             }
         },
         dismissButton = {

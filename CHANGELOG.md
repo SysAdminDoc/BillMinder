@@ -4,6 +4,11 @@ All notable changes to BillMinder will be documented in this file.
 
 ## [Unreleased]
 
+- App-lock settings now take effect immediately, including screenshot protection, without requiring an app restart.
+- PINs now use a versioned PBKDF2 record with automatic migration from earlier formats. Repeated failures trigger an escalating delay that survives restarts.
+- Biometric unlock always keeps a PIN fallback, and successful authentication clears the failed-attempt delay.
+- New privacy controls can mask financial values inside the app and hide bill details from notifications, widgets, and full-screen reminders.
+- Refreshed the Settings screenshot and security documentation to match the new controls.
 - Every bill now stores the date its schedule starts from, and every occurrence is derived from that date. Recurring bills no longer drift as the current date moves, and biweekly and quarterly cycles keep their phase.
 - Payments are recorded against a cycle key instead of a recomputed timestamp. The same occurrence can only be paid once, so marking a bill paid twice (from the app, a notification, the watch, or an import) records one payment.
 - Unpaid occurrences stay overdue instead of quietly rolling forward to the next cycle.

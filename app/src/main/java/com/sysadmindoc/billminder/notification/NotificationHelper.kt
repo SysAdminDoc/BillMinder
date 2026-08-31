@@ -9,6 +9,8 @@ import androidx.core.app.NotificationCompat
 import com.sysadmindoc.billminder.MainActivity
 import com.sysadmindoc.billminder.R
 import com.sysadmindoc.billminder.data.CurrencyFormatter
+import com.sysadmindoc.billminder.security.PrivacyText
+import com.sysadmindoc.billminder.security.SecurityPrefs
 
 object NotificationHelper {
 
@@ -45,6 +47,11 @@ object NotificationHelper {
     fun cancelAll(context: Context, billId: Long) {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         AlarmIds.allNotificationIds(billId).forEach(nm::cancel)
+    }
+
+    fun cancelDisplayed(context: Context) {
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.cancelAll()
     }
 
     fun showReminderNotification(
@@ -148,13 +155,19 @@ object NotificationHelper {
             else -> "overdue by ${-daysUntilDue} day(s)"
         }
         val autoPayNote = if (isAutoPay) " (Auto-Pay)" else ""
+        val privacyEnabled = SecurityPrefs.maskExternalContent(context)
+        val visibleBillName = PrivacyText.externalBillName(billName, privacyEnabled)
+        val visibleAmount = PrivacyText.externalAmount(
+            CurrencyFormatter.format(amount, currency),
+            privacyEnabled
+        )
 
         val notificationBuilder = NotificationCompat.Builder(context, CHANNEL_REMINDERS)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("$billName · ${CurrencyFormatter.format(amount, currency)}$autoPayNote")
+            .setContentTitle("$visibleBillName · $visibleAmount$autoPayNote")
             .setContentText("Bill is $dueText")
             .setStyle(NotificationCompat.BigTextStyle()
-                .bigText("$billName is $dueText.\nAmount: ${CurrencyFormatter.format(amount, currency)}$autoPayNote"))
+                .bigText("$visibleBillName is $dueText.\nAmount: $visibleAmount$autoPayNote"))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(
                 if (ReminderPrefs.isFullScreenEnabled(context)) {
@@ -221,10 +234,17 @@ object NotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val privacyEnabled = SecurityPrefs.maskExternalContent(context)
+        val visibleBillName = PrivacyText.externalBillName(billName, privacyEnabled)
+        val visibleAmount = PrivacyText.externalAmount(
+            CurrencyFormatter.format(amount, currency),
+            privacyEnabled
+        )
+
         val notificationBuilder = NotificationCompat.Builder(context, CHANNEL_OVERDUE)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("OVERDUE: $billName")
-            .setContentText("${CurrencyFormatter.format(amount, currency)} is $daysPastDue day(s) past due!")
+            .setContentTitle("OVERDUE: $visibleBillName")
+            .setContentText("$visibleAmount is $daysPastDue day(s) past due!")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setContentIntent(pendingIntent)

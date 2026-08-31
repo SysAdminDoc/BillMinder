@@ -22,6 +22,8 @@ import com.sysadmindoc.billminder.data.CurrencyConverter
 import com.sysadmindoc.billminder.data.CurrencyFormatter
 import com.sysadmindoc.billminder.data.CurrencyPrefs
 import com.sysadmindoc.billminder.domain.BillCycles
+import com.sysadmindoc.billminder.security.PrivacyText
+import com.sysadmindoc.billminder.security.SecurityPrefs
 
 class BillMinderWidget : GlanceAppWidget() {
 
@@ -31,6 +33,7 @@ class BillMinderWidget : GlanceAppWidget() {
         val bills = repo.getAllBillsList()
         val displayCurrency = CurrencyPrefs.getDisplayCurrency(context)
         val manualRates = CurrencyPrefs.getManualRates(context)
+        val privacyEnabled = SecurityPrefs.maskExternalContent(context)
 
         val payments = repo.getAllPaymentsForExport()
         val upcoming = bills.mapNotNull { bill ->
@@ -53,7 +56,7 @@ class BillMinderWidget : GlanceAppWidget() {
         }
 
         provideContent {
-            WidgetContent(upcoming, totalDue, displayCurrency)
+            WidgetContent(upcoming, totalDue, displayCurrency, privacyEnabled)
         }
     }
 }
@@ -69,7 +72,12 @@ data class WidgetBillItem(
 )
 
 @Composable
-private fun WidgetContent(bills: List<WidgetBillItem>, totalDue: Double, displayCurrency: String) {
+private fun WidgetContent(
+    bills: List<WidgetBillItem>,
+    totalDue: Double,
+    displayCurrency: String,
+    privacyEnabled: Boolean
+) {
     val bgColor = ColorProvider(Color(0xFF11111B))
     val textColor = ColorProvider(Color(0xFFCDD6F4))
     val subtextColor = ColorProvider(Color(0xFFA6ADC8))
@@ -96,7 +104,7 @@ private fun WidgetContent(bills: List<WidgetBillItem>, totalDue: Double, display
             )
             Spacer(GlanceModifier.defaultWeight())
             Text(
-                "${CurrencyFormatter.format(totalDue, displayCurrency)} due",
+                "${PrivacyText.externalAmount(CurrencyFormatter.format(totalDue, displayCurrency), privacyEnabled)} due",
                 style = TextStyle(color = textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             )
         }
@@ -120,7 +128,7 @@ private fun WidgetContent(bills: List<WidgetBillItem>, totalDue: Double, display
                     verticalAlignment = Alignment.Vertical.CenterVertically
                 ) {
                     Text(
-                        bill.name,
+                        PrivacyText.externalBillName(bill.name, privacyEnabled),
                         style = TextStyle(color = textColor, fontSize = 13.sp),
                         maxLines = 1,
                         modifier = GlanceModifier.defaultWeight()
@@ -143,7 +151,10 @@ private fun WidgetContent(bills: List<WidgetBillItem>, totalDue: Double, display
                     )
                     Spacer(GlanceModifier.width(8.dp))
                     Text(
-                        CurrencyFormatter.format(bill.amount, bill.currency),
+                        PrivacyText.externalAmount(
+                            CurrencyFormatter.format(bill.amount, bill.currency),
+                            privacyEnabled
+                        ),
                         style = TextStyle(color = textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     )
                 }

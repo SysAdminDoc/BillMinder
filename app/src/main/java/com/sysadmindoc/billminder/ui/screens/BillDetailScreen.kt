@@ -232,7 +232,7 @@ fun BillDetailScreen(
                     }
                     Spacer(Modifier.height(24.dp))
                     Text(
-                        CurrencyFormatter.format(currentBill.amount, currentBill.currency),
+                        privateAmount(currentBill.amount, currentBill.currency),
                         fontSize = 42.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = (-0.9).sp,
@@ -334,7 +334,7 @@ fun BillDetailScreen(
                         GroupDivider()
                         DetailRow(
                             "Amount range",
-                            "${CurrencyFormatter.format(currentBill.amountMin, currentBill.currency)} to ${CurrencyFormatter.format(currentBill.amountMax, currentBill.currency)}",
+                            "${privateAmount(currentBill.amountMin, currentBill.currency)} to ${privateAmount(currentBill.amountMax, currentBill.currency)}",
                             Icons.Filled.Tune
                         )
                     }
@@ -377,7 +377,7 @@ fun BillDetailScreen(
                         Column {
                             Text("Lifetime total", style = MaterialTheme.typography.bodySmall, color = CatSubtext0)
                             Text(
-                                CurrencyFormatter.format(lifetimeSpending, currentBill.currency),
+                                privateAmount(lifetimeSpending, currentBill.currency),
                                 fontSize = 24.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = CatMauve
@@ -387,7 +387,7 @@ fun BillDetailScreen(
                             Text("${payments.size} payments", color = CatText, fontWeight = FontWeight.Medium)
                             if (payments.isNotEmpty()) {
                                 Text(
-                                    "Average ${CurrencyFormatter.format(lifetimeSpending / payments.size, currentBill.currency)}",
+                                    "Average ${privateAmount(lifetimeSpending / payments.size, currentBill.currency)}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = CatSubtext0
                                 )
@@ -528,7 +528,7 @@ private fun PaymentRow(
                 }
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text(CurrencyFormatter.format(payment.amount, payment.currency), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = CatGreen)
+                Text(privateAmount(payment.amount, payment.currency), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = CatGreen)
                 if (payment.attachmentName.isNotBlank()) {
                     TextButton(onClick = onOpenAttachment, contentPadding = PaddingValues(0.dp)) {
                         Text("Open", color = CatBlue, style = MaterialTheme.typography.labelMedium)

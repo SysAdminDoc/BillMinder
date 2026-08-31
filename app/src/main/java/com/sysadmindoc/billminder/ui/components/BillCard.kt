@@ -41,7 +41,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sysadmindoc.billminder.data.BillCategory
-import com.sysadmindoc.billminder.data.CurrencyFormatter
 import com.sysadmindoc.billminder.data.HolidayCalendar
 import com.sysadmindoc.billminder.ui.theme.CatBlue
 import com.sysadmindoc.billminder.ui.theme.CatGreen
@@ -51,6 +50,7 @@ import com.sysadmindoc.billminder.ui.theme.CatSurfaceRaised
 import com.sysadmindoc.billminder.ui.theme.CatText
 import com.sysadmindoc.billminder.ui.theme.CatYellow
 import com.sysadmindoc.billminder.ui.theme.storedBillColor
+import com.sysadmindoc.billminder.ui.theme.privateAmount
 import com.sysadmindoc.billminder.viewmodel.BillWithStatus
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -165,14 +165,14 @@ fun BillCard(
         Spacer(Modifier.width(6.dp))
         Column(horizontalAlignment = Alignment.End) {
             Text(
-                CurrencyFormatter.format(bill.amount, bill.currency),
+                privateAmount(bill.amount, bill.currency),
                 color = if (billWithStatus.isPaidThisCycle) CatSubtext0 else CatText,
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold
             )
             if (bill.isVariableAmount && bill.amountMin != null && bill.amountMax != null) {
                 Text(
-                    "${CurrencyFormatter.format(bill.amountMin, bill.currency)} to ${CurrencyFormatter.format(bill.amountMax, bill.currency)}",
+                    "${privateAmount(bill.amountMin, bill.currency)} to ${privateAmount(bill.amountMax, bill.currency)}",
                     color = CatSubtext0,
                     style = MaterialTheme.typography.labelSmall
                 )

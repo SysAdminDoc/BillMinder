@@ -33,6 +33,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
 import com.sysadmindoc.billminder.data.CurrencyFormatter
+import com.sysadmindoc.billminder.security.PrivacyText
+import com.sysadmindoc.billminder.security.SecurityPrefs
 import com.sysadmindoc.billminder.ui.theme.BillMinderTheme
 import com.sysadmindoc.billminder.ui.theme.CatBlue
 import com.sysadmindoc.billminder.ui.theme.CatCrust
@@ -77,13 +79,16 @@ class ReminderAlarmActivity : FragmentActivity() {
         isAutoPay = intent.getBooleanExtra("is_auto_pay", false)
         nextDueDate = intent.getLongExtra("next_due_date", 0L)
         cycleKey = intent.getStringExtra(ReminderScheduler.EXTRA_CYCLE_KEY).orEmpty()
+        val privacyEnabled = SecurityPrefs.maskExternalContent(this)
 
         setContent {
             BillMinderTheme {
                 ReminderAlarmContent(
-                    billName = billName,
-                    amount = amount,
-                    currency = currency,
+                    billName = PrivacyText.externalBillName(billName, privacyEnabled),
+                    amountText = PrivacyText.externalAmount(
+                        CurrencyFormatter.format(amount, currency),
+                        privacyEnabled
+                    ),
                     daysUntilDue = daysUntilDue,
                     isAutoPay = isAutoPay,
                     onPaid = { finishWithAction("MARK_PAID") },
@@ -122,8 +127,7 @@ class ReminderAlarmActivity : FragmentActivity() {
 @Composable
 private fun ReminderAlarmContent(
     billName: String,
-    amount: Double,
-    currency: String,
+    amountText: String,
     daysUntilDue: Int,
     isAutoPay: Boolean,
     onPaid: () -> Unit,
@@ -155,7 +159,7 @@ private fun ReminderAlarmContent(
             )
             Spacer(Modifier.height(12.dp))
             Text(
-                CurrencyFormatter.format(amount, currency),
+                amountText,
                 color = CatText,
                 fontSize = 42.sp,
                 fontWeight = FontWeight.Bold

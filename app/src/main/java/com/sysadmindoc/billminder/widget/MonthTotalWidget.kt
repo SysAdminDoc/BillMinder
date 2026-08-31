@@ -23,6 +23,8 @@ import com.sysadmindoc.billminder.data.CurrencyFormatter
 import com.sysadmindoc.billminder.data.CurrencyPrefs
 import com.sysadmindoc.billminder.domain.BillCycles
 import com.sysadmindoc.billminder.domain.CycleEngine
+import com.sysadmindoc.billminder.security.PrivacyText
+import com.sysadmindoc.billminder.security.SecurityPrefs
 import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.util.Date
@@ -37,6 +39,7 @@ class MonthTotalWidget : GlanceAppWidget() {
         val displayCurrency = CurrencyPrefs.getDisplayCurrency(context)
         val manualRates = CurrencyPrefs.getManualRates(context)
         val payments = repo.getAllPaymentsForExport()
+        val privacyEnabled = SecurityPrefs.maskExternalContent(context)
         val today = LocalDate.now()
         val monthStart = today.withDayOfMonth(1)
         val monthEnd = monthStart.plusMonths(1).minusDays(1)
@@ -70,7 +73,16 @@ class MonthTotalWidget : GlanceAppWidget() {
         val monthName = SimpleDateFormat("MMMM", Locale.getDefault()).format(Date())
 
         provideContent {
-            MonthTotalContent(monthName, totalDue, totalPaid, remaining, paidCount, totalCount, displayCurrency)
+            MonthTotalContent(
+                monthName,
+                totalDue,
+                totalPaid,
+                remaining,
+                paidCount,
+                totalCount,
+                displayCurrency,
+                privacyEnabled
+            )
         }
     }
 }
@@ -83,7 +95,8 @@ private fun MonthTotalContent(
     remaining: Double,
     paidCount: Int,
     totalCount: Int,
-    displayCurrency: String
+    displayCurrency: String,
+    privacyEnabled: Boolean
 ) {
     val bgColor = ColorProvider(Color(0xFF11111B))
     val textColor = ColorProvider(Color(0xFFCDD6F4))
@@ -115,7 +128,10 @@ private fun MonthTotalContent(
             )
         } else {
             Text(
-                CurrencyFormatter.format(remaining, displayCurrency),
+                PrivacyText.externalAmount(
+                    CurrencyFormatter.format(remaining, displayCurrency),
+                    privacyEnabled
+                ),
                 style = TextStyle(color = textColor, fontSize = 28.sp, fontWeight = FontWeight.Bold)
             )
             Text(
@@ -141,11 +157,14 @@ private fun MonthTotalContent(
             horizontalAlignment = Alignment.Horizontal.CenterHorizontally
         ) {
             Text(
-                CurrencyFormatter.format(totalPaid, displayCurrency),
+                PrivacyText.externalAmount(
+                    CurrencyFormatter.format(totalPaid, displayCurrency),
+                    privacyEnabled
+                ),
                 style = TextStyle(color = greenColor, fontSize = 12.sp)
             )
             Text(
-                " of ${CurrencyFormatter.format(totalDue, displayCurrency)}",
+                " of ${PrivacyText.externalAmount(CurrencyFormatter.format(totalDue, displayCurrency), privacyEnabled)}",
                 style = TextStyle(color = subtextColor, fontSize = 12.sp)
             )
         }

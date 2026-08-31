@@ -36,7 +36,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.sysadmindoc.billminder.data.CurrencyFormatter
 import com.sysadmindoc.billminder.ui.theme.CatBlue
 import com.sysadmindoc.billminder.ui.theme.CatDivider
 import com.sysadmindoc.billminder.ui.theme.CatGreen
@@ -47,6 +46,7 @@ import com.sysadmindoc.billminder.ui.theme.CatSurfaceRaised
 import com.sysadmindoc.billminder.ui.theme.CatText
 import com.sysadmindoc.billminder.ui.theme.CatYellow
 import com.sysadmindoc.billminder.ui.theme.storedBillColor
+import com.sysadmindoc.billminder.ui.theme.privateAmount
 import com.sysadmindoc.billminder.viewmodel.BillWithStatus
 import com.sysadmindoc.billminder.viewmodel.MonthlySummary
 
@@ -84,7 +84,7 @@ fun SummaryCard(
                     Text("Total due", style = MaterialTheme.typography.bodyMedium, color = CatSubtext0)
                     Spacer(Modifier.height(2.dp))
                     Text(
-                        text = CurrencyFormatter.format(summary.remaining, summary.currency),
+                        text = privateAmount(summary.remaining, summary.currency),
                         fontSize = if (usesLargeText) 31.sp else 38.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = (-0.9).sp,
@@ -168,7 +168,7 @@ fun SummaryCard(
                     }
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
-                            text = CurrencyFormatter.format(next.bill.amount, next.bill.currency),
+                            text = privateAmount(next.bill.amount, next.bill.currency),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = CatText
