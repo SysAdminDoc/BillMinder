@@ -182,7 +182,9 @@ object NotificationHelper {
             .addAction(R.drawable.ic_notification, "Tomorrow", snoozeTmrwPending)
             .setDeleteIntent(dismissedPending)
             .setAutoCancel(true)
-        if (ReminderPrefs.isFullScreenEnabled(context)) {
+        // The preference alone is not enough: Android 14 denies full-screen intents to apps in
+        // this category, and attaching one anyway silently downgrades the alert.
+        if (ReminderPrefs.isFullScreenEnabled(context) && ReminderPermissions.canUseFullScreen(context)) {
             notificationBuilder.setFullScreenIntent(fullScreenPending, true)
         }
         val notification = notificationBuilder.build()
@@ -250,7 +252,9 @@ object NotificationHelper {
             .setContentIntent(pendingIntent)
             .addAction(R.drawable.ic_notification, "Paid", markPaidPending)
             .setOngoing(true)
-        if (ReminderPrefs.isFullScreenEnabled(context)) {
+        // The preference alone is not enough: Android 14 denies full-screen intents to apps in
+        // this category, and attaching one anyway silently downgrades the alert.
+        if (ReminderPrefs.isFullScreenEnabled(context) && ReminderPermissions.canUseFullScreen(context)) {
             notificationBuilder.setFullScreenIntent(fullScreenPending, true)
         }
         val notification = notificationBuilder.build()

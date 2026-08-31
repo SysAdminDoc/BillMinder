@@ -30,7 +30,9 @@ The Home page has search, category filters, due-state groups, and one-tap paymen
 
 BillMinder schedules two optional reminders per bill, and reminders fire at 9:00 in your local time zone. Available timing ranges from the due day to one month ahead.
 
-The app declares `USE_EXACT_ALARM`, so Android 12 and newer grant exact alarms without a settings trip. If exact alarms are ever unavailable the reminder still runs, scheduled as a wake-up alarm that Doze is allowed to delay, so it can arrive late rather than not at all. Settings shows the live permission state.
+The app declares `USE_EXACT_ALARM`, so Android 12 and newer grant exact alarms without a settings trip. If exact alarms are ever unavailable the reminder still runs: it falls back to an alarm that fires through Doze but is not held to an exact minute, so it can arrive late rather than not at all. Settings shows the live state for notifications and exact alarms.
+
+The alarm-style full-screen reminder is different. Android 14 stopped granting full-screen alerts to apps outside the calling and alarm categories, so BillMinder starts denied on those versions. Turning the setting on shows a prompt to grant it, and until you do, those reminders arrive as an ordinary heads-up notification instead of quietly doing nothing.
 
 Notifications include Paid, one-hour snooze, and tomorrow actions. Unpaid bills get a separate overdue alert. Reminders are rebuilt after a reboot, app update, clock change, or timezone change.
 
@@ -47,7 +49,7 @@ There is also an optional alarm-style due screen and an opt-in local scan of rec
 
 The app declares no internet or location permission, and it makes no network calls: the OCR model ships inside the APK. There is no analytics SDK, crash reporter, billing library, or bank connection.
 
-Everything it does declare, and why:
+Everything in the installed app's permission list, and why:
 
 | Permission | Used for |
 | --- | --- |
@@ -58,8 +60,11 @@ Everything it does declare, and why:
 | `RECEIVE_BOOT_COMPLETED` | Rebuilding alarms after a restart. |
 | `VIBRATE`, `WAKE_LOCK` | Delivering a reminder on a sleeping device. |
 | `USE_BIOMETRIC` | Fingerprint and face unlock for the app lock. |
+| `USE_FINGERPRINT` | The pre-Android-9 path of the same unlock, added by androidx.biometric. |
+| `FOREGROUND_SERVICE` | Added by ML Kit. BillMinder starts no foreground service. |
+| `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` | Signature-level, added by AndroidX. Only the app's own process can use it. |
 
-`ManifestPermissionsTest` fails the build if the merged manifest gains anything outside that set, loses one the app depends on, or picks up a network or location permission from a library.
+`ManifestPermissionsTest` fails the build if the merged manifest gains a permission outside that table, loses one the app depends on, or picks up a network or location permission from a library.
 
 ## Data and portability
 

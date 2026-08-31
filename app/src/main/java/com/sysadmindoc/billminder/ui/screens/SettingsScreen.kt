@@ -451,13 +451,33 @@ fun SettingsScreen(
         SettingsToggle(
             icon = Icons.Filled.Alarm,
             title = "Full-Screen Reminders",
-            subtitle = "Show an alarm-style screen for due bills",
+            subtitle = if (fullScreenReminders && !reminderPermissions.fullScreenAllowed) {
+                "Android has not allowed full-screen alerts, so reminders arrive as a banner"
+            } else {
+                "Show an alarm-style screen for due bills"
+            },
             checked = fullScreenReminders,
             onCheckedChange = { enabled ->
                 fullScreenReminders = enabled
                 ReminderPrefs.setFullScreenEnabled(context, enabled)
             }
         )
+        // Turning the preference on is not enough on Android 14 and newer, which withholds
+        // full-screen alerts from apps in this category until they are granted by hand.
+        if (fullScreenReminders && !reminderPermissions.fullScreenAllowed) {
+            SettingsRow(
+                icon = Icons.Filled.Warning,
+                title = "Allow full-screen alerts",
+                subtitle = "Grant the permission so the alarm screen can actually open",
+                tint = CatYellow
+            ) {
+                runCatching {
+                    context.startActivity(ReminderPermissions.fullScreenSettingsIntent(context))
+                }.onFailure {
+                    Toast.makeText(context, "No settings screen is available for this", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
         SettingsToggle(
             icon = Icons.Filled.EventBusy,
             title = "Vacation Mode",

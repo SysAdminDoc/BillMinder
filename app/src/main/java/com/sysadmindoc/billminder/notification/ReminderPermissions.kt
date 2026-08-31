@@ -51,11 +51,32 @@ object ReminderPermissions {
         val exact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
             alarmManager.canScheduleExactAlarms()
 
-        val fullScreen = Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE ||
-            notificationManager.canUseFullScreenIntent()
-
-        return ReminderPermissionState(notifications, exact, fullScreen)
+        return ReminderPermissionState(notifications, exact, canUseFullScreen(context))
     }
+
+    /**
+     * Whether the platform will honour a full-screen intent right now. Android 14 stopped
+     * auto-granting this to anything that is not a calling or alarm app, so a bill reminder starts
+     * denied and the notification quietly degrades to a heads-up banner unless this is checked.
+     */
+    fun canUseFullScreen(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return true
+        val notificationManager =
+            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        return notificationManager.canUseFullScreenIntent()
+    }
+
+    /** The system screen that grants full-screen alerts, where the platform offers one. */
+    fun fullScreenSettingsIntent(context: Context): Intent =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT)
+                .setData(Uri.fromParts("package", context.packageName, null))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        } else {
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                .setData(Uri.fromParts("package", context.packageName, null))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
 
     /** Opens the system screen that governs whichever permission is missing. */
     fun settingsIntent(context: Context, state: ReminderPermissionState): Intent = when {
