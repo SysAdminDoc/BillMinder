@@ -4,6 +4,7 @@ All notable changes to BillMinder will be documented in this file.
 
 ## [Unreleased]
 
+- BillMinder now ships as one build with every feature in it. The SMS scan, the alarm-style full-screen reminder, and exact-alarm auto-grant used to sit behind a separate flavor and are now part of the only APK the project releases.
 - Removed the Wear OS companion module and all phone-side watch synchronization. The watch tile was never usable because the two modules shipped under different application IDs, and the app no longer carries the Play services wearable, tiles, or protolayout libraries.
 - Dropped the unused Play services location library. Home geofencing was removed earlier, so nothing referenced it.
 - Home, Calendar, forecasts, cash-flow planning, and all three widgets now read the same cycle snapshot for dates, paid state, and due state.

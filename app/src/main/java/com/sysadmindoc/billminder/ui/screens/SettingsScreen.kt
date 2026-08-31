@@ -42,7 +42,6 @@ import com.sysadmindoc.billminder.data.CsvMigrationPreset
 import com.sysadmindoc.billminder.data.CsvTable
 import com.sysadmindoc.billminder.data.InterchangeFormat
 import com.sysadmindoc.billminder.data.SmsBillCandidate
-import com.sysadmindoc.billminder.DistributionFeatures
 import com.sysadmindoc.billminder.notification.ReminderPermissions
 import com.sysadmindoc.billminder.notification.ReminderPrefs
 import com.sysadmindoc.billminder.notification.NotificationHelper
@@ -449,18 +448,16 @@ fun SettingsScreen(
                 Toast.makeText(context, "No settings screen is available for this", Toast.LENGTH_LONG).show()
             }
         }
-        if (DistributionFeatures.canShowFullScreenReminders) {
-            SettingsToggle(
-                icon = Icons.Filled.Alarm,
-                title = "Full-Screen Reminders",
-                subtitle = "Show an alarm-style screen for due bills",
-                checked = fullScreenReminders,
-                onCheckedChange = { enabled ->
-                    fullScreenReminders = enabled
-                    ReminderPrefs.setFullScreenEnabled(context, enabled)
-                }
-            )
-        }
+        SettingsToggle(
+            icon = Icons.Filled.Alarm,
+            title = "Full-Screen Reminders",
+            subtitle = "Show an alarm-style screen for due bills",
+            checked = fullScreenReminders,
+            onCheckedChange = { enabled ->
+                fullScreenReminders = enabled
+                ReminderPrefs.setFullScreenEnabled(context, enabled)
+            }
+        )
         SettingsToggle(
             icon = Icons.Filled.EventBusy,
             title = "Vacation Mode",
@@ -626,37 +623,35 @@ fun SettingsScreen(
             importCsvLauncher.launch(arrayOf("text/csv", "text/plain", "application/vnd.ms-excel"))
         }
 
-        if (DistributionFeatures.canReadSmsInbox) {
-            SettingsRow(
-                icon = Icons.Filled.Sms,
-                title = "Scan Payment SMS",
-                subtitle = "Opt-in local scan; propose bills from recent messages"
-            ) {
-                if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED) {
-                    viewModel.scanSms { candidates, error ->
-                        if (error != null) {
-                            Toast.makeText(context, error, Toast.LENGTH_LONG).show()
-                        } else {
-                            smsCandidates = candidates
-                            showSmsCandidates = true
-                        }
+        SettingsRow(
+            icon = Icons.Filled.Sms,
+            title = "Scan Payment SMS",
+            subtitle = "Opt-in local scan; propose bills from recent messages"
+        ) {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED) {
+                viewModel.scanSms { candidates, error ->
+                    if (error != null) {
+                        Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+                    } else {
+                        smsCandidates = candidates
+                        showSmsCandidates = true
                     }
-                } else {
-                    smsPermissionLauncher.launch(Manifest.permission.READ_SMS)
                 }
+            } else {
+                smsPermissionLauncher.launch(Manifest.permission.READ_SMS)
             }
-        } else {
-            SettingsRow(
-                icon = Icons.Filled.Sms,
-                title = "Read a shared message",
-                subtitle = "Share a payment text to BillMinder and it proposes a bill"
-            ) {
-                Toast.makeText(
-                    context,
-                    "Open the message, choose Share, and pick BillMinder.",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
+        }
+
+        SettingsRow(
+            icon = Icons.Filled.Share,
+            title = "Read a shared message",
+            subtitle = "Share a payment text to BillMinder and it proposes a bill"
+        ) {
+            Toast.makeText(
+                context,
+                "Open the message, choose Share, and pick BillMinder.",
+                Toast.LENGTH_LONG
+            ).show()
         }
 
         if (showSmsCandidates) {

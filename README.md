@@ -32,7 +32,7 @@ BillMinder schedules two optional reminders per bill. Available timing ranges fr
 
 Notifications include Paid, one-hour snooze, and tomorrow actions. Unpaid bills get a separate overdue alert. Reminders are rebuilt after a reboot, app update, clock change, or timezone change.
 
-The full sideload build also has an optional alarm-style due screen and local SMS proposal scan. Shared payment text can be reviewed without granting inbox access.
+There is also an optional alarm-style due screen and an opt-in local scan of recent payment texts. If you would rather not grant inbox access, share one payment message to BillMinder and it proposes a bill from that instead.
 
 ## Privacy and security
 
@@ -59,26 +59,22 @@ Room stores the live data and has explicit migrations for every shipped schema. 
 
 ## Current builds
 
-BillMinder is distributed as a sideloaded APK from GitHub Releases. The repository still has two phone flavors:
+BillMinder is distributed as a sideloaded APK from GitHub Releases. There is one build and it carries every feature, including the local SMS scanner, full-screen reminders, and `USE_EXACT_ALARM`. Store publishing is not part of the release process.
 
-- `fdroid` is the full build. It includes the local SMS scanner, full-screen reminders, and `USE_EXACT_ALARM`.
-- `play` omits those restricted permissions and accepts shared payment text instead.
-
-Neither flavor requests network access. Store publishing is not part of the release process.
+The build requests no network access. SMS reading, full-screen reminders, and exact-alarm auto-grant stay optional at runtime, so the app asks only once you turn the matching feature on.
 
 ## Build locally
 
 Use JDK 21 and an Android SDK with API 36 installed.
 
 ```bash
-./gradlew :app:assemblePlayDebug :app:assembleFdroidDebug
+./gradlew :app:assembleDebug
 ```
 
-The APKs are written under:
+The APK is written under:
 
 ```text
-app/build/outputs/apk/play/debug/
-app/build/outputs/apk/fdroid/debug/
+app/build/outputs/apk/debug/
 ```
 
 Run the JVM suite and Android lint before installing a build:
@@ -99,10 +95,10 @@ cp keystore.properties.example keystore.properties
 The file is already ignored by Git. It accepts `storeFile`, `storePassword`, `keyAlias`, and `keyPassword`.
 
 ```bash
-./gradlew :app:assemblePlayRelease :app:assembleFdroidRelease
+./gradlew :app:assembleRelease
 ```
 
-Both tasks stop with a direct error when signing details are missing. A successful build creates signed, minified APKs in each flavor's `release` directory.
+The task stops with a direct error when signing details are missing. A successful build writes a signed, minified APK to `app/build/outputs/apk/release/`, and that APK is what a GitHub release ships.
 
 ## License
 

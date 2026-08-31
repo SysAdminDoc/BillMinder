@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!--
-    The Play build declares no location permissions. Home geofencing needed background location,
-    which Play grants only against a reviewed declaration BillMinder does not hold, so the feature
-    is not shipped rather than shipped with an undeclared permission.
--->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" />

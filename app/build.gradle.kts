@@ -33,17 +33,6 @@ android {
     namespace = "com.sysadmindoc.billminder"
     compileSdk = 36
 
-    flavorDimensions += "distribution"
-
-    productFlavors {
-        create("play") {
-            dimension = "distribution"
-        }
-        create("fdroid") {
-            dimension = "distribution"
-        }
-    }
-
     defaultConfig {
         applicationId = "com.sysadmindoc.billminder"
         minSdk = 26
