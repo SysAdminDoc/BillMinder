@@ -74,104 +74,160 @@ object BackupManager {
         val table = CsvImport.read(context, uri) ?: return CsvImportResult(0, 0, 0)
         if (!mapping.isReady()) return CsvImportResult(0, 0, table.rows.size)
 
+        var rowsSkipped = 0
+        val parsed = table.rows.mapNotNull { row ->
+            parseRow(table, row, mapping) ?: run { rowsSkipped++; null }
+        }
+
+        // A bill's anchor has to be its earliest known date, or every payment older than the anchor
+        // would snap forward onto the same occurrence and all but one would be discarded.
+        val anchorByKey = parsed
+            .groupBy { it.key }
+            .mapValues { (_, rows) -> rows.mapNotNull { it.settledOn }.minOrNull() }
+
         val billIds = mutableMapOf<String, Long>()
         var billsImported = 0
         var paymentsImported = 0
-        var rowsSkipped = 0
 
         return repo.inTransaction {
-        table.rows.forEach { row ->
-            val rawName = table.value(row, CsvField.NAME, mapping)
-            val rawAmount = table.value(row, CsvField.AMOUNT, mapping)
-            val rawRecurrence = table.value(row, CsvField.RECURRENCE, mapping)
-            val recurrence = if (rawRecurrence.isBlank()) {
-                mapping.defaultRecurrence
-            } else {
-                CsvValueParser.recurrence(rawRecurrence)
-            }
-            val dueDate = table.value(row, CsvField.DUE_DATE, mapping)
-                .takeIf { it.isNotBlank() }
-                ?.let(CsvValueParser::dateMillis)
-            val dueDay = table.value(row, CsvField.DUE_DAY, mapping)
-                .toIntOrNull()
-                ?: dueDate?.let { CsvValueParser.dueDay(it, recurrence) }
-            val amount = CsvValueParser.amount(rawAmount)?.let {
-                if (mapping.absoluteAmounts) kotlin.math.abs(it) else it
-            }
-            val validDueDay = dueDay != null && dueDay in if (
-                recurrence == Recurrence.WEEKLY || recurrence == Recurrence.BIWEEKLY
-            ) 1..7 else 1..31
+            parsed.forEach { parsedRow ->
+                val billId = billIds[parsedRow.key] ?: repo.insertBill(
+                    parsedRow.toBill(anchorByKey[parsedRow.key])
+                ).also {
+                    billIds[parsedRow.key] = it
+                    billsImported++
+                }
 
-            if (rawName.isBlank() || amount == null || amount <= 0.0 || !validDueDay) {
-                rowsSkipped++
-                return@forEach
+                val paymentDate = parsedRow.paymentDate
+                val paymentAmount = parsedRow.paymentAmount
+                if (paymentDate != null && paymentAmount != null && paymentAmount > 0.0) {
+                    // Snap onto the bill's own grid so an import cannot invent a cycle.
+                    val importedBill = repo.getBillById(billId)
+                    val settledDate = parsedRow.settledOn ?: CycleEngine.toLocalDate(paymentDate)
+                    val cycleDate = importedBill
+                        ?.let { CycleEngine.nearestOccurrence(it, settledDate) }
+                        ?: settledDate
+                    val inserted = repo.insertPayment(
+                        Payment(
+                            billId = billId,
+                            amount = paymentAmount,
+                            paidAt = paymentDate,
+                            dueDate = CycleEngine.dueInstant(cycleDate),
+                            confirmationNumber = parsedRow.confirmation,
+                            currency = parsedRow.paymentCurrency,
+                            cycleKey = CycleEngine.cycleKey(cycleDate)
+                        )
+                    )
+                    if (inserted > 0L) paymentsImported++ else rowsSkipped++
+                }
             }
+            CsvImportResult(billsImported, paymentsImported, rowsSkipped)
+        }
+    }
 
-            val name = MerchantNormalizer.normalize(rawName)
-            val currency = CurrencyCatalog.find(table.value(row, CsvField.CURRENCY, mapping)).code
-            val dueMonth = if (recurrence == Recurrence.ONE_TIME) dueDate?.let(CsvValueParser::month) else null
-            val dueYear = if (recurrence == Recurrence.ONE_TIME) dueDate?.let(CsvValueParser::year) else null
-            val key = listOf(
+    /** One usable CSV row, with everything already parsed and validated. */
+    private data class ParsedCsvRow(
+        val key: String,
+        val name: String,
+        val amount: Double,
+        val currency: String,
+        val recurrence: Recurrence,
+        val dueDay: Int,
+        val dueMonth: Int?,
+        val dueYear: Int?,
+        val category: BillCategory,
+        val isAutoPay: Boolean,
+        val notes: String,
+        val settledOn: java.time.LocalDate?,
+        val paymentDate: Long?,
+        val paymentAmount: Double?,
+        val paymentCurrency: String,
+        val confirmation: String
+    ) {
+        fun toBill(anchor: java.time.LocalDate?) = Bill(
+            name = name,
+            amount = amount,
+            dueDay = dueDay,
+            dueMonth = dueMonth,
+            dueYear = dueYear,
+            category = category,
+            recurrence = recurrence,
+            isAutoPay = isAutoPay,
+            notes = notes,
+            currency = currency,
+            anchorEpochDay = anchor?.toEpochDay() ?: 0L
+        )
+    }
+
+    private fun parseRow(
+        table: CsvTable,
+        row: List<String>,
+        mapping: CsvImportMapping
+    ): ParsedCsvRow? {
+        val rawName = table.value(row, CsvField.NAME, mapping)
+        val rawRecurrence = table.value(row, CsvField.RECURRENCE, mapping)
+        val recurrence = if (rawRecurrence.isBlank()) {
+            mapping.defaultRecurrence
+        } else {
+            CsvValueParser.recurrence(rawRecurrence)
+        }
+        val dueDate = table.value(row, CsvField.DUE_DATE, mapping)
+            .takeIf { it.isNotBlank() }
+            ?.let(CsvValueParser::dateMillis)
+        val dueDay = table.value(row, CsvField.DUE_DAY, mapping)
+            .toIntOrNull()
+            ?: dueDate?.let { CsvValueParser.dueDay(it, recurrence) }
+        val amount = CsvValueParser.amount(table.value(row, CsvField.AMOUNT, mapping))?.let {
+            if (mapping.absoluteAmounts) kotlin.math.abs(it) else it
+        }
+        val validDueDay = dueDay != null && dueDay in if (
+            recurrence == Recurrence.WEEKLY || recurrence == Recurrence.BIWEEKLY
+        ) 1..7 else 1..31
+
+        if (rawName.isBlank() || amount == null || amount <= 0.0 || !validDueDay) return null
+
+        val name = MerchantNormalizer.normalize(rawName)
+        val currency = CurrencyCatalog.find(table.value(row, CsvField.CURRENCY, mapping)).code
+        val dueMonth = if (recurrence == Recurrence.ONE_TIME) dueDate?.let(CsvValueParser::month) else null
+        val dueYear = if (recurrence == Recurrence.ONE_TIME) dueDate?.let(CsvValueParser::year) else null
+        val paymentDate = table.value(row, CsvField.PAYMENT_DATE, mapping)
+            .takeIf { it.isNotBlank() }
+            ?.let(CsvValueParser::dateMillis)
+        val paymentAmount = table.value(row, CsvField.PAYMENT_AMOUNT, mapping)
+            .takeIf { it.isNotBlank() }
+            ?.let(CsvValueParser::amount)
+            ?.let { if (mapping.absoluteAmounts) kotlin.math.abs(it) else it }
+            ?: paymentDate?.let { amount }
+
+        return ParsedCsvRow(
+            key = listOf(
                 name.lowercase(java.util.Locale.ROOT),
                 recurrence.name,
                 dueDay,
                 dueMonth,
                 dueYear,
                 currency
-            ).joinToString("|")
-            val billId = billIds[key] ?: repo.insertBill(
-                Bill(
-                    name = name,
-                    amount = amount,
-                    dueDay = dueDay,
-                    dueMonth = dueMonth,
-                    dueYear = dueYear,
-                    category = CsvValueParser.category(table.value(row, CsvField.CATEGORY, mapping)),
-                    recurrence = recurrence,
-                    isAutoPay = CsvValueParser.boolean(table.value(row, CsvField.AUTO_PAY, mapping)),
-                    notes = table.value(row, CsvField.NOTES, mapping),
-                    currency = currency,
-                    // Anchor on the imported due date so historical rows land on real occurrences.
-                    anchorEpochDay = dueDate?.let { CycleEngine.toLocalDate(it).toEpochDay() } ?: 0L
-                )
-            ).also {
-                billIds[key] = it
-                billsImported++
-            }
-
-            val paymentDate = table.value(row, CsvField.PAYMENT_DATE, mapping)
-                .takeIf { it.isNotBlank() }
-                ?.let(CsvValueParser::dateMillis)
-            val paymentAmount = table.value(row, CsvField.PAYMENT_AMOUNT, mapping)
-                .takeIf { it.isNotBlank() }
-                ?.let(CsvValueParser::amount)
-                ?.let { if (mapping.absoluteAmounts) kotlin.math.abs(it) else it }
-                ?: paymentDate?.let { amount }
-            if (paymentDate != null && paymentAmount != null && paymentAmount > 0.0) {
-                // Snap the payment onto the bill's own occurrence so imports cannot invent a cycle.
-                val importedBill = repo.getBillById(billId)
-                val settledDate = CycleEngine.toLocalDate(dueDate ?: paymentDate)
-                val cycleDate = importedBill
-                    ?.let { CycleEngine.occurrenceOnOrAfter(it, settledDate) }
-                    ?: settledDate
-                val inserted = repo.insertPayment(
-                    Payment(
-                        billId = billId,
-                        amount = paymentAmount,
-                        paidAt = paymentDate,
-                        dueDate = CycleEngine.dueInstant(cycleDate),
-                        confirmationNumber = table.value(row, CsvField.CONFIRMATION, mapping),
-                        currency = CurrencyCatalog.find(
-                            table.value(row, CsvField.PAYMENT_CURRENCY, mapping).ifBlank { currency }
-                        ).code,
-                        cycleKey = CycleEngine.cycleKey(cycleDate)
-                    )
-                )
-                if (inserted > 0L) paymentsImported++ else rowsSkipped++
-            }
-        }
-        CsvImportResult(billsImported, paymentsImported, rowsSkipped)
-        }
+            ).joinToString("|"),
+            name = name,
+            amount = amount,
+            currency = currency,
+            recurrence = recurrence,
+            dueDay = dueDay!!,
+            dueMonth = dueMonth,
+            dueYear = dueYear,
+            category = CsvValueParser.category(table.value(row, CsvField.CATEGORY, mapping)),
+            isAutoPay = CsvValueParser.boolean(table.value(row, CsvField.AUTO_PAY, mapping)),
+            notes = table.value(row, CsvField.NOTES, mapping),
+            // The export the app writes has no due-date column, so a payment date is the only
+            // signal of when this bill's schedule actually started.
+            settledOn = (dueDate ?: paymentDate)?.let { CycleEngine.toLocalDate(it) },
+            paymentDate = paymentDate,
+            paymentAmount = paymentAmount,
+            paymentCurrency = CurrencyCatalog.find(
+                table.value(row, CsvField.PAYMENT_CURRENCY, mapping).ifBlank { currency }
+            ).code,
+            confirmation = table.value(row, CsvField.CONFIRMATION, mapping)
+        )
     }
 
     suspend fun exportYearEndCsv(context: Context, uri: Uri, repo: BillRepository, year: Int) {

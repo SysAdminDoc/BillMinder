@@ -144,7 +144,10 @@ fun AddEditBillScreen(
             id = if (isEditing) billId!! else 0,
             name = name.trim(),
             amount = parsedAmount,
-            dueDay = CycleEngine.legacyDueDay(recurrence, firstDueDate, firstDueDate.dayOfMonth),
+            // When the date has not moved, keep the day the user originally asked for. A bill set
+            // to the 31st is anchored on a short month's last day, and re-deriving from the anchor
+            // would quietly rewrite the schedule to that shorter day.
+            dueDay = CycleEngine.legacyDueDay(recurrence, firstDueDate, requestedDueDay(loadedBill, firstDueDate)),
             dueMonth = firstDueDate.monthValue - 1,
             dueYear = firstDueDate.year,
             anchorEpochDay = firstDueDate.toEpochDay(),
@@ -567,7 +570,7 @@ fun AddEditBillScreen(
                 colors = billFieldColors()
             )
             Text(
-                text = anchorHint(recurrence, firstDueDate),
+                text = anchorHint(recurrence, firstDueDate, CycleEngine.legacyDueDay(recurrence, firstDueDate, requestedDueDay(loadedBill, firstDueDate))),
                 style = MaterialTheme.typography.bodySmall,
                 color = CatSubtext0
             )
@@ -737,7 +740,16 @@ fun AddEditBillScreen(
 
     if (showDatePicker) {
         val pickerState = rememberDatePickerState(
-            initialSelectedDateMillis = firstDueDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+            initialSelectedDateMillis = firstDueDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
+            yearRange = EARLIEST_DUE_DATE.year..(LocalDate.now().year + 30),
+            selectableDates = object : SelectableDates {
+                // Zero epoch day doubles as "no anchor stored", so the picker starts after it.
+                override fun isSelectableDate(utcTimeMillis: Long): Boolean =
+                    utcTimeMillis >= EARLIEST_DUE_DATE.atStartOfDay(ZoneOffset.UTC)
+                        .toInstant().toEpochMilli()
+
+                override fun isSelectableYear(year: Int): Boolean = year >= EARLIEST_DUE_DATE.year
+            }
         )
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
@@ -759,20 +771,34 @@ fun AddEditBillScreen(
     }
 }
 
+/**
+ * The day of the month the user asked for. An unchanged date keeps whatever the bill already
+ * stored, so a bill due on the 31st does not become one due on the 28th just because it was opened.
+ */
+private fun requestedDueDay(loaded: Bill?, picked: LocalDate): Int =
+    if (loaded != null && loaded.anchorEpochDay == picked.toEpochDay()) {
+        loaded.dueDay
+    } else {
+        picked.dayOfMonth
+    }
+
 /** Plain-language summary of what the picked date means for the chosen recurrence. */
-private fun anchorHint(recurrence: Recurrence, date: LocalDate): String = when (recurrence) {
+private fun anchorHint(recurrence: Recurrence, date: LocalDate, dueDay: Int): String = when (recurrence) {
     Recurrence.ONE_TIME -> "Due once on ${date.format(anchorDateFormat)}."
     Recurrence.WEEKLY -> "Repeats every ${date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault())}."
     Recurrence.BIWEEKLY ->
         "Repeats every other ${date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault())}."
-    Recurrence.MONTHLY -> "Repeats on day ${date.dayOfMonth} of each month."
-    Recurrence.QUARTERLY -> "Repeats on day ${date.dayOfMonth} every three months."
+    Recurrence.MONTHLY -> "Repeats on day $dueDay of each month."
+    Recurrence.QUARTERLY -> "Repeats on day $dueDay every three months."
     Recurrence.YEARLY ->
-        "Repeats every ${date.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${date.dayOfMonth}."
+        "Repeats every ${date.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} $dueDay."
 }
 
 private val anchorDateFormat: DateTimeFormatter =
     DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
+
+/** Earliest date a bill can be anchored to. Epoch day zero means "no anchor stored". */
+private val EARLIEST_DUE_DATE: LocalDate = LocalDate.of(1971, 1, 1)
 
 @Composable
 private fun billFieldColors() = OutlinedTextFieldDefaults.colors(

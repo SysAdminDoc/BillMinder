@@ -141,19 +141,44 @@ abstract class BillDatabase : RoomDatabase() {
                 }
             }
 
+            /**
+             * Reads each payment's stored due timestamp and snaps it onto the bill's own occurrence
+             * grid. The old scheduler anchored on the current month, so quarterly and biweekly
+             * payments sit on dates the new engine never produces; and those timestamps were
+             * written at 23:59:59 in whatever timezone was active at the time, so a later zone
+             * change can shift the raw conversion by a day. Snapping absorbs both.
+             */
             private fun backfillCycleKeys(db: SupportSQLiteDatabase) {
                 val zone = ZoneId.systemDefault()
-                val rows = mutableListOf<Pair<Long, String>>()
-                db.query("SELECT id, dueDate FROM payments").use { cursor ->
+                val bills = mutableMapOf<Long, Bill>()
+                db.query("SELECT id, dueDay, recurrence, anchorEpochDay FROM bills").use { cursor ->
                     while (cursor.moveToNext()) {
                         val id = cursor.getLong(0)
-                        val dueDate = cursor.getLong(1)
-                        val date = if (dueDate > 0L) {
-                            CycleEngine.toLocalDate(dueDate, zone)
+                        bills[id] = Bill(
+                            id = id,
+                            name = "",
+                            amount = 0.0,
+                            dueDay = cursor.getInt(1),
+                            recurrence = runCatching { Recurrence.valueOf(cursor.getString(2)) }
+                                .getOrDefault(Recurrence.MONTHLY),
+                            anchorEpochDay = cursor.getLong(3)
+                        )
+                    }
+                }
+
+                val rows = mutableListOf<Pair<Long, String>>()
+                db.query("SELECT id, billId, dueDate, paidAt FROM payments").use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val id = cursor.getLong(0)
+                        val bill = bills[cursor.getLong(1)]
+                        val stamp = cursor.getLong(2).takeIf { it > 0L } ?: cursor.getLong(3)
+                        val raw = if (stamp > 0L) {
+                            CycleEngine.toLocalDate(stamp, zone)
                         } else {
                             LocalDate.ofEpochDay(0L)
                         }
-                        rows.add(id to CycleEngine.cycleKey(date))
+                        val snapped = bill?.let { CycleEngine.nearestOccurrence(it, raw, zone) } ?: raw
+                        rows.add(id to CycleEngine.cycleKey(snapped))
                     }
                 }
                 rows.forEach { (id, key) ->

@@ -196,6 +196,49 @@ class BillDatabaseMigrationTest {
     }
 
     @Test
+    fun `payments land on the bill's own occurrence grid`() {
+        openRaw(6) { db ->
+            db.execSQL(V6_BILLS)
+            db.execSQL(V6_PAYMENTS)
+            db.execSQL(V6_PAYEES)
+            // The old scheduler anchored on the current month, so a quarterly bill's stored due
+            // dates sit in months the anchored engine never emits.
+            db.execSQL(v6Bill(id = 20, name = "Insurance", dueDay = 10, recurrence = "QUARTERLY", created = "2024-01-10"))
+            db.execSQL(insertV6Payment(30, 20, millisOf("2025-03-10")))
+            // A biweekly payment recorded a week off the anchored fortnight.
+            db.execSQL(v6Bill(id = 21, name = "Cleaner", dueDay = 6, recurrence = "BIWEEKLY", created = "2024-01-05"))
+            db.execSQL(insertV6Payment(31, 21, millisOf("2024-02-09")))
+        }.close()
+
+        val db = openMigrated()
+        try {
+            val quarterly = runBlocking { db.billDao().getBillById(20L) }!!
+            val quarterlyKey = runBlocking { db.billDao().getPaidCycleKeys(20L) }.single()
+            assertTrue(
+                "$quarterlyKey is not a quarterly occurrence",
+                CycleEngine.occurrencesInRange(
+                    quarterly,
+                    LocalDate.parse("2024-01-01"),
+                    LocalDate.parse("2026-01-01")
+                ).map(CycleEngine::cycleKey).contains(quarterlyKey)
+            )
+
+            val biweekly = runBlocking { db.billDao().getBillById(21L) }!!
+            val biweeklyKey = runBlocking { db.billDao().getPaidCycleKeys(21L) }.single()
+            assertTrue(
+                "$biweeklyKey is not a biweekly occurrence",
+                CycleEngine.occurrencesInRange(
+                    biweekly,
+                    LocalDate.parse("2024-01-01"),
+                    LocalDate.parse("2024-06-01")
+                ).map(CycleEngine::cycleKey).contains(biweeklyKey)
+            )
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
     fun `a newer database is reported instead of wiped`() {
         openRaw(99) { db ->
             db.execSQL(V6_BILLS)
@@ -228,6 +271,21 @@ class BillDatabaseMigrationTest {
 
     private fun millisOf(date: String): Long =
         LocalDate.parse(date).atTime(12, 0).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+    private fun v6Bill(
+        id: Long,
+        name: String,
+        dueDay: Int,
+        recurrence: String,
+        created: String,
+        currency: String = "USD"
+    ): String =
+        "INSERT INTO bills (id, name, amount, dueDay, dueMonth, dueYear, category, " +
+            "recurrence, isAutoPay, notes, reminderTiming, secondReminderTiming, " +
+            "isEnabled, createdAt, color, paymentUrl, tags, isVariableAmount, " +
+            "amountMin, amountMax, currency) VALUES " +
+            "($id, '$name', 10.0, $dueDay, NULL, NULL, 'OTHER', '$recurrence', 0, '', 'ONE_DAY', " +
+            "NULL, 1, ${millisOf(created)}, 1, '', '', 0, NULL, NULL, '$currency')"
 
     private fun insertV6Payment(id: Long, billId: Long, dueDate: Long): String =
         "INSERT INTO payments (id, billId, amount, paidAt, dueDate, note, confirmationNumber, " +
