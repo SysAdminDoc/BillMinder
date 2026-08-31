@@ -154,13 +154,43 @@ class CycleEngineTest {
     }
 
     @Test
-    fun `a fully paid history advances to the next occurrence`() {
+    fun `a fully paid history stays on the most recent occurrence`() {
         val b = bill(Recurrence.MONTHLY, "2026-01-10")
         val today = LocalDate.parse("2026-04-15")
         val paid = setOf("2026-01-10", "2026-02-10", "2026-03-10", "2026-04-10")
+        // Staying here is what keeps the paid state visible; jumping to May would show the bill as
+        // unpaid again and let a second tap record a payment against a cycle nobody asked for.
         assertEquals(
-            LocalDate.parse("2026-05-10"),
+            LocalDate.parse("2026-04-10"),
             CycleEngine.currentCycle(b, today, { it in paid }, utc)
+        )
+    }
+
+    @Test
+    fun `paying today's occurrence leaves it current so it reads as paid`() {
+        val b = bill(Recurrence.MONTHLY, "2026-01-15")
+        val today = LocalDate.parse("2026-08-15")
+        val paid = (1..8).map { "2026-%02d-15".format(it) }.toSet()
+        val current = CycleEngine.currentCycle(b, today, { it in paid }, utc)!!
+        assertEquals(today, current)
+        assertTrue("the current cycle must be the paid one", CycleEngine.cycleKey(current) in paid)
+    }
+
+    @Test
+    fun `a bill whose first occurrence is still ahead reports that occurrence`() {
+        val b = bill(Recurrence.MONTHLY, "2026-09-01")
+        assertEquals(
+            LocalDate.parse("2026-09-01"),
+            CycleEngine.currentCycle(b, LocalDate.parse("2026-08-15"), { false }, utc)
+        )
+    }
+
+    @Test
+    fun `an unpaid cycle older than the lookback window is still reported`() {
+        val b = bill(Recurrence.ONE_TIME, "2023-01-01")
+        assertEquals(
+            LocalDate.parse("2023-01-01"),
+            CycleEngine.currentCycle(b, LocalDate.parse("2026-08-31"), { false }, utc)
         )
     }
 
@@ -174,10 +204,44 @@ class CycleEngineTest {
     }
 
     @Test
-    fun `a paid one time bill has no current cycle`() {
+    fun `a paid one time bill stays visible on its own date`() {
         val b = bill(Recurrence.ONE_TIME, "2026-02-01")
         val today = LocalDate.parse("2026-04-15")
-        assertNull(CycleEngine.currentCycle(b, today, { it == "2026-02-01" }, utc))
+        assertEquals(
+            LocalDate.parse("2026-02-01"),
+            CycleEngine.currentCycle(b, today, { it == "2026-02-01" }, utc)
+        )
+    }
+
+    @Test
+    fun `occurrenceOnOrBefore walks back to the right occurrence`() {
+        val monthly = bill(Recurrence.MONTHLY, "2026-01-31", dueDay = 31)
+        assertEquals(
+            LocalDate.parse("2026-02-28"),
+            CycleEngine.occurrenceOnOrBefore(monthly, LocalDate.parse("2026-03-15"), utc)
+        )
+        val biweekly = bill(Recurrence.BIWEEKLY, "2026-01-05")
+        assertEquals(
+            LocalDate.parse("2026-03-16"),
+            CycleEngine.occurrenceOnOrBefore(biweekly, LocalDate.parse("2026-03-20"), utc)
+        )
+        assertNull(
+            CycleEngine.occurrenceOnOrBefore(monthly, LocalDate.parse("2025-12-31"), utc)
+        )
+    }
+
+    @Test
+    fun `nearestOccurrence snaps a stray date onto the grid`() {
+        val quarterly = bill(Recurrence.QUARTERLY, "2024-01-10")
+        // The old scheduler could record a payment in any month; snapping keeps it on the grid.
+        assertEquals(
+            LocalDate.parse("2025-04-10"),
+            CycleEngine.nearestOccurrence(quarterly, LocalDate.parse("2025-03-10"), utc)
+        )
+        assertEquals(
+            LocalDate.parse("2025-01-10"),
+            CycleEngine.nearestOccurrence(quarterly, LocalDate.parse("2025-01-11"), utc)
+        )
     }
 
     @Test

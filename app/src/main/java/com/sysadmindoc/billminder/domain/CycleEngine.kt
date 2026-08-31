@@ -98,20 +98,6 @@ object CycleEngine {
         }
     }
 
-    /** The occurrence at 0-based [index], or null once the rule has no further occurrences. */
-    fun occurrenceAt(bill: Bill, index: Int, zone: ZoneId = ZoneId.systemDefault()): LocalDate? {
-        if (index < 0) return null
-        val start = anchor(bill, zone)
-        return when (bill.recurrence) {
-            Recurrence.ONE_TIME -> if (index == 0) start else null
-            Recurrence.WEEKLY -> start.plusWeeks(index.toLong())
-            Recurrence.BIWEEKLY -> start.plusWeeks(2L * index)
-            Recurrence.MONTHLY -> monthlyOccurrence(bill, start, index.toLong())
-            Recurrence.QUARTERLY -> monthlyOccurrence(bill, start, 3L * index)
-            Recurrence.YEARLY -> monthlyOccurrence(bill, start, 12L * index)
-        }
-    }
-
     /** The first occurrence on or after [from], or null when the rule has already finished. */
     fun occurrenceOnOrAfter(
         bill: Bill,
@@ -138,6 +124,42 @@ object CycleEngine {
         zone: ZoneId = ZoneId.systemDefault()
     ): LocalDate? = occurrenceOnOrAfter(bill, after.plusDays(1), zone)
 
+    /** The last occurrence on or before [until], or null when the rule starts later than that. */
+    fun occurrenceOnOrBefore(
+        bill: Bill,
+        until: LocalDate,
+        zone: ZoneId = ZoneId.systemDefault()
+    ): LocalDate? {
+        val start = anchor(bill, zone)
+        if (start.isAfter(until)) return null
+        if (bill.recurrence == Recurrence.ONE_TIME) return start
+
+        return when (bill.recurrence) {
+            Recurrence.WEEKLY -> weeklyOnOrBefore(start, until, 7L)
+            Recurrence.BIWEEKLY -> weeklyOnOrBefore(start, until, 14L)
+            Recurrence.MONTHLY -> monthlyOnOrBefore(bill, start, until, 1L)
+            Recurrence.QUARTERLY -> monthlyOnOrBefore(bill, start, until, 3L)
+            Recurrence.YEARLY -> monthlyOnOrBefore(bill, start, until, 12L)
+            Recurrence.ONE_TIME -> start
+        }
+    }
+
+    /** Whichever occurrence sits closest to [date], preferring the earlier one on a tie. */
+    fun nearestOccurrence(
+        bill: Bill,
+        date: LocalDate,
+        zone: ZoneId = ZoneId.systemDefault()
+    ): LocalDate? {
+        val before = occurrenceOnOrBefore(bill, date, zone)
+        val after = occurrenceOnOrAfter(bill, date, zone)
+        return when {
+            before == null -> after
+            after == null -> before
+            ChronoUnit.DAYS.between(before, date) <= ChronoUnit.DAYS.between(date, after) -> before
+            else -> after
+        }
+    }
+
     /** Every occurrence between [start] and [endInclusive], capped at [MAX_OCCURRENCES]. */
     fun occurrencesInRange(
         bill: Bill,
@@ -158,9 +180,13 @@ object CycleEngine {
     }
 
     /**
-     * The occurrence the user is currently responsible for: the oldest unpaid occurrence inside the
-     * lookback window, otherwise the next future occurrence. Unpaid past cycles therefore stay
-     * current (and overdue) instead of silently rolling forward.
+     * The occurrence the user is currently looking at and acting on.
+     *
+     * It is the oldest unpaid occurrence up to today, so an unpaid cycle stays current and overdue
+     * instead of rolling forward. When everything up to today is settled, it is the most recent
+     * occurrence, which keeps the paid state visible until the next one comes around rather than
+     * jumping straight to a future date the user has not been asked for yet. A bill whose first
+     * occurrence is still ahead reports that occurrence.
      */
     fun currentCycle(
         bill: Bill,
@@ -169,9 +195,12 @@ object CycleEngine {
         zone: ZoneId = ZoneId.systemDefault()
     ): LocalDate? {
         val start = maxOf(anchor(bill, zone), today.minusMonths(LOOKBACK_MONTHS))
-        val settled = occurrencesInRange(bill, start, today, zone)
-        settled.firstOrNull { !isPaid(cycleKey(it)) }?.let { return it }
-        return occurrenceAfter(bill, today, zone)
+        occurrencesInRange(bill, start, today, zone)
+            .firstOrNull { !isPaid(cycleKey(it)) }
+            ?.let { return it }
+        // Nothing outstanding: stay on the last occurrence (paid, or older than the lookback
+        // window) so the bill keeps a visible state, and only look ahead when there is none.
+        return occurrenceOnOrBefore(bill, today, zone) ?: occurrenceOnOrAfter(bill, today, zone)
     }
 
     /** `Calendar.DAY_OF_WEEK` value for [date] (Sunday = 1 through Saturday = 7). */
@@ -219,6 +248,29 @@ object CycleEngine {
         val gap = ChronoUnit.DAYS.between(start, from)
         val steps = ceilDiv(gap, stepDays).coerceAtLeast(0L)
         return start.plusDays(steps * stepDays)
+    }
+
+    private fun weeklyOnOrBefore(start: LocalDate, until: LocalDate, stepDays: Long): LocalDate {
+        val gap = ChronoUnit.DAYS.between(start, until).coerceAtLeast(0L)
+        return start.plusDays((gap / stepDays) * stepDays)
+    }
+
+    private fun monthlyOnOrBefore(
+        bill: Bill,
+        start: LocalDate,
+        until: LocalDate,
+        stepMonths: Long
+    ): LocalDate {
+        val day = intendedDayOfMonth(bill, start)
+        val startMonth = YearMonth.from(start)
+        val monthGap = ChronoUnit.MONTHS.between(startMonth, YearMonth.from(until))
+        var steps = (monthGap / stepMonths).coerceAtLeast(0L)
+        var candidate = dayIn(startMonth.plusMonths(steps * stepMonths), day)
+        while (candidate.isAfter(until) && steps > 0L) {
+            steps -= 1
+            candidate = dayIn(startMonth.plusMonths(steps * stepMonths), day)
+        }
+        return candidate
     }
 
     private fun monthlyOnOrAfter(

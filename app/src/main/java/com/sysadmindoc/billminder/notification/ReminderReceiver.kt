@@ -78,6 +78,7 @@ class ReminderReceiver : BroadcastReceiver() {
                     daysUntilDue = daysBeforeDue,
                     isAutoPay = bill.isAutoPay,
                     nextDueDate = CycleEngine.dueInstant(cycleDate),
+                    cycleKey = key,
                     currency = bill.currency
                 )
             }
@@ -104,6 +105,7 @@ class ReminderReceiver : BroadcastReceiver() {
                 billName = bill.name,
                 amount = bill.amount,
                 daysPastDue = daysPastDue,
+                cycleKey = cycleKey,
                 currency = bill.currency
             )
             ReminderScheduler.scheduleReminder(context, bill)
@@ -113,6 +115,7 @@ class ReminderReceiver : BroadcastReceiver() {
     private fun handleMarkPaid(context: Context, intent: Intent, repo: BillRepository) {
         val billId = billIdOf(intent)
         val amount = intent.getDoubleExtra("amount", 0.0)
+        val cycleKey = intent.getStringExtra(ReminderScheduler.EXTRA_CYCLE_KEY).orEmpty()
         if (billId == -1L) return
 
         runAsync {
@@ -121,7 +124,10 @@ class ReminderReceiver : BroadcastReceiver() {
                 ReminderScheduler.scheduleReminder(context, bill)
                 return@runAsync
             }
-            val cycle = repo.currentCycleFor(bill) ?: return@runAsync
+            // Credit the cycle the notification was about, not whatever is oldest right now.
+            val cycle = CycleEngine.parseCycleKey(cycleKey)
+                ?: repo.currentCycleFor(bill)
+                ?: return@runAsync
             repo.insertPayment(
                 Payment(
                     billId = billId,
@@ -147,6 +153,7 @@ class ReminderReceiver : BroadcastReceiver() {
         val isAutoPay = intent.getBooleanExtra("is_auto_pay", false)
         val currency = intent.getStringExtra("currency") ?: "USD"
         val snoozeMinutes = intent.getIntExtra("snooze_minutes", 60)
+        val cycleKey = intent.getStringExtra(ReminderScheduler.EXTRA_CYCLE_KEY).orEmpty()
 
         NotificationHelper.cancelAll(context, billId)
 
@@ -159,6 +166,7 @@ class ReminderReceiver : BroadcastReceiver() {
             putExtra("currency", currency)
             putExtra("days_until_due", daysUntilDue)
             putExtra("is_auto_pay", isAutoPay)
+            putExtra(ReminderScheduler.EXTRA_CYCLE_KEY, cycleKey)
         }
         val pendingIntent = ReminderScheduler.pendingIntent(
             context, billId, AlarmSlot.SNOOZED_REMINDER, ReminderScheduler.ACTION_SNOOZED, snoozeIntent
@@ -186,6 +194,7 @@ class ReminderReceiver : BroadcastReceiver() {
             amount = amount,
             daysUntilDue = daysUntilDue,
             isAutoPay = isAutoPay,
+            cycleKey = intent.getStringExtra(ReminderScheduler.EXTRA_CYCLE_KEY).orEmpty(),
             currency = currency
         )
     }
@@ -193,10 +202,13 @@ class ReminderReceiver : BroadcastReceiver() {
     private fun handleReminderDismissed(context: Context, intent: Intent, repo: BillRepository) {
         val billId = billIdOf(intent)
         if (billId == -1L) return
+        val cycleKey = intent.getStringExtra(ReminderScheduler.EXTRA_CYCLE_KEY).orEmpty()
 
         runAsync {
             val bill = repo.getBillById(billId) ?: return@runAsync
-            val cycle = repo.currentCycleFor(bill) ?: return@runAsync
+            val cycle = CycleEngine.parseCycleKey(cycleKey)
+                ?: repo.currentCycleFor(bill)
+                ?: return@runAsync
             val key = CycleEngine.cycleKey(cycle)
             if (repo.getPaymentForCycle(bill.id, key) == null) {
                 scheduleCascade(
@@ -250,6 +262,7 @@ class ReminderReceiver : BroadcastReceiver() {
                     billName = bill.name,
                     amount = bill.amount,
                     daysPastDue = -daysUntilDue,
+                    cycleKey = cycleKey,
                     currency = bill.currency
                 )
             } else {
@@ -265,6 +278,7 @@ class ReminderReceiver : BroadcastReceiver() {
                     daysUntilDue = daysUntilDue,
                     isAutoPay = bill.isAutoPay,
                     nextDueDate = CycleEngine.dueInstant(currentCycle),
+                    cycleKey = cycleKey,
                     currency = bill.currency
                 )
             }

@@ -114,16 +114,20 @@ fun HomeScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) {
-        viewModel.snackbarMessage.collect { message ->
+        viewModel.snackbarMessage.collect { event ->
             val result = snackbarHostState.showSnackbar(
-                message = message,
-                actionLabel = "Undo",
+                message = event.message,
+                actionLabel = event.undoBillId?.let { "Undo" },
                 duration = SnackbarDuration.Short
             )
-            if (result == SnackbarResult.ActionPerformed) {
-                viewModel.undoDelete()
-            } else {
-                viewModel.confirmPendingDelete()
+            // Only a delete carries an undo target, and it names the bill it belongs to, so a
+            // later toast can never restore or finalize a different bill.
+            event.undoBillId?.let { billId ->
+                if (result == SnackbarResult.ActionPerformed) {
+                    viewModel.undoDelete(billId)
+                } else {
+                    viewModel.confirmPendingDelete(billId)
+                }
             }
         }
     }

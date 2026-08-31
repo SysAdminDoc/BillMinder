@@ -55,6 +55,7 @@ object NotificationHelper {
         daysUntilDue: Int,
         isAutoPay: Boolean,
         nextDueDate: Long = 0L,
+        cycleKey: String = "",
         currency: String = "USD"
     ) {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -75,6 +76,7 @@ object NotificationHelper {
             putExtra("days_until_due", daysUntilDue)
             putExtra("is_auto_pay", isAutoPay)
             putExtra("next_due_date", nextDueDate)
+            putExtra(ReminderScheduler.EXTRA_CYCLE_KEY, cycleKey)
         }
         val fullScreenPending = PendingIntent.getActivity(
             context, AlarmIds.code(billId, AlarmSlot.FULL_SCREEN), fullScreenIntent.apply { data = AlarmIds.uri(billId, AlarmSlot.FULL_SCREEN) },
@@ -84,6 +86,7 @@ object NotificationHelper {
         // Mark paid action
         val markPaidIntent = Intent(context, ReminderReceiver::class.java).apply {
             action = "MARK_PAID"
+            putExtra(ReminderScheduler.EXTRA_CYCLE_KEY, cycleKey)
             putExtra("bill_id", billId)
             putExtra("amount", amount)
             putExtra("currency", currency)
@@ -96,6 +99,7 @@ object NotificationHelper {
         // Snooze 1 hour action
         val snooze1hIntent = Intent(context, ReminderReceiver::class.java).apply {
             action = "SNOOZE"
+            putExtra(ReminderScheduler.EXTRA_CYCLE_KEY, cycleKey)
             putExtra("bill_id", billId)
             putExtra("bill_name", billName)
             putExtra("amount", amount)
@@ -112,6 +116,7 @@ object NotificationHelper {
         // Snooze tomorrow action
         val snoozeTmrwIntent = Intent(context, ReminderReceiver::class.java).apply {
             action = "SNOOZE"
+            putExtra(ReminderScheduler.EXTRA_CYCLE_KEY, cycleKey)
             putExtra("bill_id", billId)
             putExtra("bill_name", billName)
             putExtra("amount", amount)
@@ -129,6 +134,7 @@ object NotificationHelper {
             action = "REMINDER_DISMISSED"
             putExtra("bill_id", billId)
             putExtra("next_due_date", nextDueDate)
+            putExtra(ReminderScheduler.EXTRA_CYCLE_KEY, cycleKey)
         }
         val dismissedPending = PendingIntent.getBroadcast(
             context, AlarmIds.code(billId, AlarmSlot.REMINDER_DISMISSED), dismissedIntent.apply { data = AlarmIds.uri(billId, AlarmSlot.REMINDER_DISMISSED) },
@@ -177,6 +183,7 @@ object NotificationHelper {
         billName: String,
         amount: Double,
         daysPastDue: Int,
+        cycleKey: String = "",
         currency: String = "USD"
     ) {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -196,6 +203,7 @@ object NotificationHelper {
             putExtra("currency", currency)
             putExtra("days_until_due", -daysPastDue)
             putExtra("next_due_date", 0L)
+            putExtra(ReminderScheduler.EXTRA_CYCLE_KEY, cycleKey)
         }
         val fullScreenPending = PendingIntent.getActivity(
             context, AlarmIds.code(billId, AlarmSlot.OVERDUE_FULL_SCREEN), fullScreenIntent.apply { data = AlarmIds.uri(billId, AlarmSlot.OVERDUE_FULL_SCREEN) },
@@ -204,6 +212,7 @@ object NotificationHelper {
 
         val markPaidIntent = Intent(context, ReminderReceiver::class.java).apply {
             action = "MARK_PAID"
+            putExtra(ReminderScheduler.EXTRA_CYCLE_KEY, cycleKey)
             putExtra("bill_id", billId)
             putExtra("amount", amount)
         }

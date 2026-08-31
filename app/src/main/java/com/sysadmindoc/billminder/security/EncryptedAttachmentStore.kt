@@ -96,6 +96,26 @@ object EncryptedAttachmentStore {
         safeAttachmentFile(context, attachmentFile)?.delete()
     }
 
+    /**
+     * Deletes stored receipts that no payment refers to any more. Rows can go without their bytes:
+     * the schema migration drops duplicate and orphaned payments, and a process killed during an
+     * undo window leaves files behind with nothing pointing at them.
+     */
+    suspend fun purgeOrphans(context: Context, referenced: Set<String>): Int = withContext(Dispatchers.IO) {
+        val directory = File(context.filesDir, ATTACHMENT_DIRECTORY)
+        if (!directory.isDirectory) return@withContext 0
+        directory.listFiles().orEmpty().count { file ->
+            file.name !in referenced && file.delete()
+        }
+    }
+
+    /** Removes every plaintext copy made for viewing or sharing a receipt. */
+    suspend fun clearCache(context: Context): Int = withContext(Dispatchers.IO) {
+        val directory = File(context.cacheDir, CACHE_DIRECTORY)
+        if (!directory.isDirectory) return@withContext 0
+        directory.listFiles().orEmpty().count { it.delete() }
+    }
+
     internal fun isSafeStoredName(name: String): Boolean =
         name.isNotBlank() && !name.contains('/') && !name.contains('\\') && !name.contains("..")
 

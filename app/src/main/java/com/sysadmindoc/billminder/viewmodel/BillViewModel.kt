@@ -22,6 +22,12 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.util.Calendar
 
+/** A message for the snackbar. [undoBillId] is set only when undoing that delete makes sense. */
+data class SnackbarEvent(
+    val message: String,
+    val undoBillId: Long? = null
+)
+
 data class BillWithStatus(
     val bill: Bill,
     val nextDueDate: Long,
@@ -82,10 +88,11 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
     val displayCurrency: StateFlow<String> = _displayCurrency.asStateFlow()
     private val _currencySettingsRevision = MutableStateFlow(0)
 
-    // Undo delete state
-    private val _lastDeletedBill = MutableStateFlow<Bill?>(null)
-    val lastDeletedBill: StateFlow<Bill?> = _lastDeletedBill
-    private var pendingDelete: BillGraph? = null
+    /**
+     * Deleted bills waiting on their undo window, keyed by bill id. More than one can be pending at
+     * a time, because a second delete does not wait for the first snackbar to clear.
+     */
+    private val pendingDeletes = java.util.concurrent.ConcurrentHashMap<Long, BillGraph>()
 
     /** One resolution path for every list, summary, and detail surface in the app. */
     private fun statusesFor(billList: List<Bill>, paymentList: List<Payment>): List<BillWithStatus> {
@@ -117,9 +124,14 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         WidgetUpdater.updateAll(getApplication())
     }
 
-    // Snackbar events
-    private val _snackbarMessage = MutableSharedFlow<String>()
-    val snackbarMessage: SharedFlow<String> = _snackbarMessage
+    // Snackbar events. Only a delete carries an undo target, so an unrelated toast can never
+    // restore or finalize someone else's pending delete.
+    private val _snackbarMessage = MutableSharedFlow<SnackbarEvent>()
+    val snackbarMessage: SharedFlow<SnackbarEvent> = _snackbarMessage
+
+    private suspend fun notify(message: String, undoBillId: Long? = null) {
+        _snackbarMessage.emit(SnackbarEvent(message, undoBillId))
+    }
 
     val bills: StateFlow<List<Bill>> = repo.allBills
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -361,7 +373,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
             val saved = try {
                 repo.saveBillWithPayees(normalizedBill, payees)
             } catch (error: Exception) {
-                _snackbarMessage.emit("Could not save ${normalizedBill.name}")
+                notify("Could not save ${normalizedBill.name}")
                 return@launch
             } ?: return@launch
             if (saved.isEnabled) {
@@ -379,55 +391,48 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun deleteBill(bill: Bill) {
         viewModelScope.launch {
-            purgePendingDelete()
             ReminderScheduler.cancelReminder(getApplication(), bill.id)
             val graph = try {
                 repo.deleteBillGraph(bill.id)
             } catch (error: Exception) {
-                _snackbarMessage.emit("Could not delete ${bill.name}")
+                notify("Could not delete ${bill.name}")
                 return@launch
             }
             if (graph == null) return@launch
-            pendingDelete = graph
-            _lastDeletedBill.value = graph.bill
+            pendingDeletes[graph.bill.id] = graph
             refreshExternalSurfaces()
             loadChartData()
-            _snackbarMessage.emit("${bill.name} deleted")
+            notify("${bill.name} deleted", undoBillId = graph.bill.id)
         }
     }
 
-    fun undoDelete() {
-        val graph = pendingDelete ?: return
+    fun undoDelete(billId: Long) {
+        val graph = pendingDeletes.remove(billId) ?: return
         viewModelScope.launch {
             val restored = try {
                 repo.restoreBillGraph(graph)
             } catch (error: Exception) {
-                _snackbarMessage.emit("Could not restore ${graph.bill.name}")
+                // Put it back so the receipts are not orphaned by a failed restore.
+                pendingDeletes[billId] = graph
+                notify("Could not restore ${graph.bill.name}")
                 return@launch
             } ?: return@launch
             if (restored.isEnabled) {
                 ReminderScheduler.scheduleReminder(getApplication(), restored)
             }
-            pendingDelete = null
-            _lastDeletedBill.value = null
             refreshExternalSurfaces()
             loadChartData()
         }
     }
 
-    /** Called when the undo window closes without being used, making the delete final. */
-    fun confirmPendingDelete() = purgePendingDelete()
-
-    /** Drops the undo snapshot and destroys the receipt bytes it was protecting. */
-    private fun purgePendingDelete() {
-        val graph = pendingDelete ?: return
-        pendingDelete = null
-        _lastDeletedBill.value = null
+    /** Called when one bill's undo window closes without being used, making that delete final. */
+    fun confirmPendingDelete(billId: Long) {
+        val graph = pendingDeletes.remove(billId) ?: return
         graph.attachmentFiles.forEach { EncryptedAttachmentStore.delete(getApplication(), it) }
     }
 
     override fun onCleared() {
-        purgePendingDelete()
+        pendingDeletes.keys.toList().forEach(::confirmPendingDelete)
         super.onCleared()
     }
 
@@ -442,14 +447,14 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
             val saved = try {
                 repo.saveBillWithPayees(copy, sourcePayees.map { PayeeDraft(it.name, it.sharePercent) })
             } catch (error: Exception) {
-                _snackbarMessage.emit("Could not duplicate ${bill.name}")
+                notify("Could not duplicate ${bill.name}")
                 return@launch
             } ?: return@launch
             if (saved.isEnabled) {
                 ReminderScheduler.scheduleReminder(getApplication(), saved)
             }
             refreshExternalSurfaces()
-            _snackbarMessage.emit("${bill.name} duplicated")
+            notify("${bill.name} duplicated")
         }
     }
 

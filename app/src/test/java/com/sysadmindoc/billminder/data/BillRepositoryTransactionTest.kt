@@ -144,16 +144,43 @@ class BillRepositoryTransactionTest {
         val today = LocalDate.parse("2026-04-10")
         assertEquals(LocalDate.parse("2026-01-01"), repo.currentCycleFor(saved, today))
 
-        listOf("2026-01-01", "2026-02-01", "2026-03-01", "2026-04-01").forEach { key ->
+        listOf("2026-01-01", "2026-02-01", "2026-03-01").forEach { key -> pay(saved.id, key) }
+        assertEquals(LocalDate.parse("2026-04-01"), repo.currentCycleFor(saved, today))
+
+        // Once everything up to today is settled the cycle holds, so the bill reads as paid
+        // instead of silently moving to May and inviting a second payment.
+        pay(saved.id, "2026-04-01")
+        assertEquals(LocalDate.parse("2026-04-01"), repo.currentCycleFor(saved, today))
+    }
+
+    @Test
+    fun `marking paid twice in a row cannot charge a second cycle`() = runBlocking {
+        val saved = repo.saveBillWithPayees(sampleBill(), null)!!
+        val today = LocalDate.parse("2026-04-10")
+        listOf("2026-01-01", "2026-02-01", "2026-03-01").forEach { key -> pay(saved.id, key) }
+
+        repeat(2) {
+            val cycle = repo.currentCycleFor(saved, today)!!
             repo.insertPayment(
                 Payment(
                     billId = saved.id,
                     amount = 1000.0,
-                    dueDate = CycleEngine.dueInstant(LocalDate.parse(key)),
-                    cycleKey = key
+                    dueDate = CycleEngine.dueInstant(cycle),
+                    cycleKey = CycleEngine.cycleKey(cycle)
                 )
             )
         }
-        assertEquals(LocalDate.parse("2026-05-01"), repo.currentCycleFor(saved, today))
+        assertEquals(4, repo.getPaymentsForBillList(saved.id).size)
+    }
+
+    private suspend fun pay(billId: Long, key: String) {
+        repo.insertPayment(
+            Payment(
+                billId = billId,
+                amount = 1000.0,
+                dueDate = CycleEngine.dueInstant(LocalDate.parse(key)),
+                cycleKey = key
+            )
+        )
     }
 }

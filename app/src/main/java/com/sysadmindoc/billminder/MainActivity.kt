@@ -90,7 +90,11 @@ class MainActivity : FragmentActivity() {
                 }
 
                 val health = databaseHealth
-                if (health is DatabaseHealth.Unusable) {
+                // Nothing touches the database until the check finishes: building the nav host
+                // first would open it through the view model and crash before this can render.
+                if (health == null) {
+                    Surface(color = CatCrust, modifier = Modifier.fillMaxSize()) {}
+                } else if (health is DatabaseHealth.Unusable) {
                     DatabaseRecoveryScreen(health.reason, health.databasePath)
                 } else if (unlocked) {
                     if (duressMode) {

@@ -38,6 +38,7 @@ class HomeGeofenceReceiver : BroadcastReceiver() {
                             daysUntilDue = cycle.daysUntilDue,
                             isAutoPay = bill.isAutoPay,
                             nextDueDate = cycle.dueAt,
+                            cycleKey = cycle.cycleKey,
                             currency = bill.currency
                         )
                     }

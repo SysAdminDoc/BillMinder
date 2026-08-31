@@ -49,6 +49,7 @@ class ReminderAlarmActivity : FragmentActivity() {
     private var daysUntilDue: Int = 0
     private var isAutoPay: Boolean = false
     private var nextDueDate: Long = 0L
+    private var cycleKey: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -75,6 +76,7 @@ class ReminderAlarmActivity : FragmentActivity() {
         daysUntilDue = intent.getIntExtra("days_until_due", 0)
         isAutoPay = intent.getBooleanExtra("is_auto_pay", false)
         nextDueDate = intent.getLongExtra("next_due_date", 0L)
+        cycleKey = intent.getStringExtra(ReminderScheduler.EXTRA_CYCLE_KEY).orEmpty()
 
         setContent {
             BillMinderTheme {
@@ -102,6 +104,7 @@ class ReminderAlarmActivity : FragmentActivity() {
             putExtra("days_until_due", daysUntilDue)
             putExtra("is_auto_pay", isAutoPay)
             putExtra("next_due_date", nextDueDate)
+            putExtra(ReminderScheduler.EXTRA_CYCLE_KEY, cycleKey)
             if (action == "SNOOZE") putExtra("snooze_minutes", 60)
         }
         if (action == "MARK_PAID" || action == "REMINDER_DISMISSED") {

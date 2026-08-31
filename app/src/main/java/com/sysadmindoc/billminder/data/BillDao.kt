@@ -52,6 +52,9 @@ interface BillDao {
     @Query("SELECT cycleKey FROM payments WHERE billId = :billId")
     suspend fun getPaidCycleKeys(billId: Long): List<String>
 
+    @Query("SELECT attachmentFile FROM payments WHERE attachmentFile != ''")
+    suspend fun getReferencedAttachments(): List<String>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertPayment(payment: Payment): Long
 
