@@ -72,7 +72,7 @@ object EncryptedAttachmentStore {
     suspend fun decryptToCache(context: Context, attachmentFile: String): File? = withContext(Dispatchers.IO) {
         val source = safeAttachmentFile(context, attachmentFile) ?: return@withContext null
         if (!source.exists()) return@withContext null
-        val cacheDirectory = File(context.cacheDir, CACHE_DIRECTORY).apply { mkdirs() }
+        val cacheDirectory = cacheWorkspace(context).apply { mkdirs() }
         val output = File(cacheDirectory, "view-${UUID.randomUUID()}")
 
         try {
@@ -182,10 +182,25 @@ object EncryptedAttachmentStore {
 
     /** Removes every plaintext copy made for viewing or sharing a receipt. */
     suspend fun clearCache(context: Context): Int = withContext(Dispatchers.IO) {
-        val directory = File(context.cacheDir, CACHE_DIRECTORY)
+        val directory = cacheWorkspace(context)
         if (!directory.isDirectory) return@withContext 0
         directory.listFiles().orEmpty().count { it.delete() }
     }
+
+    /**
+     * Drops one plaintext copy that was handed to an external viewer. The path is resolved against
+     * the cache workspace first, so a caller that has lost track of what it opened cannot delete
+     * anything outside it. Returns true once no copy remains, including when it was already gone.
+     */
+    fun releaseCachedView(context: Context, file: File): Boolean {
+        val directory = runCatching { cacheWorkspace(context).canonicalFile }.getOrNull() ?: return false
+        val target = runCatching { file.canonicalFile }.getOrNull() ?: return false
+        if (target.parentFile != directory) return false
+        return !target.exists() || target.delete()
+    }
+
+    /** Where every decrypted-for-viewing copy lives, and the only place a release may delete from. */
+    internal fun cacheWorkspace(context: Context): File = File(context.cacheDir, CACHE_DIRECTORY)
 
     internal fun isSafeStoredName(name: String): Boolean =
         name.isNotBlank() && !name.contains('/') && !name.contains('\\') && !name.contains("..")

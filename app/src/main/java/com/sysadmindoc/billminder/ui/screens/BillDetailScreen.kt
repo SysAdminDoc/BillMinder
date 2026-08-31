@@ -23,6 +23,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.sysadmindoc.billminder.data.Bill
 import com.sysadmindoc.billminder.data.BillPayee
 import com.sysadmindoc.billminder.data.CalendarSync
@@ -39,6 +42,7 @@ import com.sysadmindoc.billminder.ui.components.SectionHeading
 import com.sysadmindoc.billminder.ui.components.getCategoryIcon
 import com.sysadmindoc.billminder.ui.theme.*
 import com.sysadmindoc.billminder.viewmodel.BillViewModel
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlinx.coroutines.launch
@@ -61,6 +65,29 @@ fun BillDetailScreen(
     val dateFormat = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
     val dateTimeFormat = SimpleDateFormat("MMM d, yyyy 'at' h:mm a", Locale.getDefault())
     var showMoreMenu by remember { mutableStateOf(false) }
+
+    // A receipt is decrypted to a cache file so an external viewer can read it through the
+    // FileProvider. Nothing tells us when that viewer closes, so the copy is dropped and its grant
+    // revoked as soon as this screen is resumed again, and on the way out if the user never returns.
+    val openedReceipt = remember { mutableStateOf<Pair<File, Uri>?>(null) }
+    val releaseReceipt: () -> Unit = {
+        openedReceipt.value?.let { (file, uri) ->
+            runCatching { context.revokeUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            EncryptedAttachmentStore.releaseCachedView(context, file)
+            openedReceipt.value = null
+        }
+    }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) releaseReceipt()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            releaseReceipt()
+        }
+    }
 
     LaunchedEffect(billId) {
         bill = viewModel.getBillById(billId)
@@ -417,6 +444,7 @@ fun BillDetailScreen(
                     dateFormat = dateTimeFormat,
                     onOpenAttachment = {
                         scope.launch {
+                            releaseReceipt()
                             val file = EncryptedAttachmentStore.decryptToCache(context, payment.attachmentFile)
                             if (file != null) {
                                 val uri = FileProvider.getUriForFile(
@@ -424,10 +452,22 @@ fun BillDetailScreen(
                                     "${context.packageName}.files",
                                     file
                                 )
-                                context.startActivity(Intent(Intent.ACTION_VIEW).apply {
-                                    setDataAndType(uri, payment.attachmentMime)
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                })
+                                val opened = runCatching {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW).apply {
+                                        setDataAndType(uri, payment.attachmentMime)
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    })
+                                }.isSuccess
+                                if (opened) {
+                                    openedReceipt.value = file to uri
+                                } else {
+                                    EncryptedAttachmentStore.releaseCachedView(context, file)
+                                    Toast.makeText(
+                                        context,
+                                        "No app on this device can open that receipt",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
                             }
                         }
                     }
