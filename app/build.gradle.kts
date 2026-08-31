@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -8,6 +10,23 @@ plugins {
 ksp {
     // Exported schemas are what the migration tests validate against.
     arg("room.schemaLocation", "$projectDir/schemas")
+}
+
+// Signing credentials live outside the repository. See keystore.properties.example.
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) file.inputStream().use(::load)
+}
+val hasSigningCredentials = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+    .all { !keystoreProperties.getProperty(it).isNullOrBlank() }
+
+gradle.taskGraph.whenReady {
+    if (!hasSigningCredentials && allTasks.any { it.name.contains("Release") }) {
+        throw GradleException(
+            "Release builds need signing credentials. Copy keystore.properties.example to " +
+                "keystore.properties in the repository root and fill in the four values."
+        )
+    }
 }
 
 android {
@@ -34,11 +53,13 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            storeFile = file("${rootProject.projectDir}/billminder.jks")
-            storePassword = "billminder2025"
-            keyAlias = "billminder"
-            keyPassword = "billminder2025"
+        if (hasSigningCredentials) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
         }
     }
 
@@ -46,7 +67,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = signingConfigs.findByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

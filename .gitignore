@@ -27,3 +27,6 @@ AGENTS.md
 .ai/
 PROJECT_CONTEXT.md
 CONTINUATION_PROMPT.md
+
+# Signing credentials, never committed
+keystore.properties

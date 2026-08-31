@@ -124,3 +124,26 @@ The open-source distribution variant can be built without Play-only integrations
 ```bash
 ./gradlew :app:assembleFdroidDebug
 ```
+
+### Release builds
+
+Signing credentials are not in the repository. Copy the template, fill in your own keystore details, and keep the result out of version control (it's already gitignored):
+
+```bash
+cp keystore.properties.example keystore.properties
+```
+
+| Key | What it is |
+| --- | --- |
+| `storeFile` | Path to your keystore, relative to the repository root or absolute |
+| `storePassword` | Keystore password |
+| `keyAlias` | Alias of the signing key inside the keystore |
+| `keyPassword` | Password for that key |
+
+With those four values in place:
+
+```bash
+./gradlew :app:assemblePlayRelease :app:assembleFdroidRelease :wear:assembleRelease
+```
+
+Both app flavors and the Wear companion sign with the same key, which the Wear Data Layer requires. Without `keystore.properties`, any release task stops immediately with a message pointing at the template rather than producing an unsigned APK.

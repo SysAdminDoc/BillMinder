@@ -13,6 +13,7 @@ All notable changes to BillMinder will be documented in this file.
 - Reminder broadcasts now finish their database work before the receiver is released, and alarms carry the cycle they belong to.
 - Saving, duplicating, importing, deleting, and undoing a bill each run as a single database transaction. A failure part-way through leaves the previous state alone rather than a half-written bill.
 - Deleting a bill is permanent and takes its payees and payment history with it. Undo puts the whole thing back under its original identifier, and receipt files are only destroyed once the undo window has closed.
+- Signing credentials moved out of the build files into a `keystore.properties` that is never committed. Release builds stop with a clear message if it is missing.
 - If the saved database cannot be opened, the app now explains what happened and leaves the file alone instead of crashing.
 - Reminders no longer stand on each other. Every alarm and notification has its own identity, so a bill's first reminder, second reminder, and overdue alert coexist, and two bills can never share an alarm no matter what their identifiers are.
 - Added an overdue alarm that fires the morning after an unpaid bill was due, instead of relying on a dismissed notification to start the follow-up chain.
