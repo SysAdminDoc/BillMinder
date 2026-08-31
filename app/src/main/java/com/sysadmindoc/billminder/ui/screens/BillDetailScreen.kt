@@ -29,6 +29,7 @@ import com.sysadmindoc.billminder.data.CalendarSync
 import com.sysadmindoc.billminder.data.CurrencyFormatter
 import com.sysadmindoc.billminder.data.HolidayCalendar
 import com.sysadmindoc.billminder.data.Payment
+import com.sysadmindoc.billminder.domain.BillCycles
 import com.sysadmindoc.billminder.notification.ReminderScheduler
 import com.sysadmindoc.billminder.security.EncryptedAttachmentStore
 import com.sysadmindoc.billminder.ui.components.GroupDivider
@@ -74,6 +75,8 @@ fun BillDetailScreen(
     }
 
     val currentBill = bill ?: return
+    val cycle = remember(currentBill, payments) { BillCycles.resolve(currentBill, payments) }
+    val nextDue = cycle?.dueAt ?: ReminderScheduler.getNextDueDate(currentBill)
 
     Scaffold(
         containerColor = CatCrust,
@@ -127,7 +130,7 @@ fun BillDetailScreen(
                                     val added = CalendarSync.openInsert(
                                         context,
                                         currentBill,
-                                        ReminderScheduler.getNextDueDate(currentBill)
+                                        nextDue
                                     )
                                     if (!added) {
                                         Toast.makeText(context, "No calendar app is available", Toast.LENGTH_LONG).show()
@@ -139,7 +142,6 @@ fun BillDetailScreen(
                             DropdownMenuItem(
                                 text = { Text("Share", color = CatText) },
                                 onClick = {
-                                    val nextDue = ReminderScheduler.getNextDueDate(currentBill)
                                     val shareText = "${currentBill.name}\n" +
                                         "Amount: ${CurrencyFormatter.format(currentBill.amount, currentBill.currency)}\n" +
                                         "Due: ${dateFormat.format(Date(nextDue))}\n" +
@@ -177,9 +179,8 @@ fun BillDetailScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {
-                val nextDue = ReminderScheduler.getNextDueDate(currentBill)
-                val isPaid = payments.any { it.dueDate == nextDue }
-                val daysUntil = ((nextDue - System.currentTimeMillis()) / 86_400_000L).toInt()
+                val isPaid = cycle?.isPaid == true
+                val daysUntil = cycle?.daysUntilDue ?: 0
                 val dueStatus = when {
                     isPaid -> "Paid for this cycle"
                     daysUntil < 0 -> "${-daysUntil} days overdue"
@@ -281,7 +282,7 @@ fun BillDetailScreen(
                         tint = CatBlue,
                         modifier = Modifier.weight(1f)
                     ) {
-                        val added = CalendarSync.openInsert(context, currentBill, ReminderScheduler.getNextDueDate(currentBill))
+                        val added = CalendarSync.openInsert(context, currentBill, nextDue)
                         if (!added) Toast.makeText(context, "No calendar app is available", Toast.LENGTH_LONG).show()
                     }
                     DetailAction(
@@ -290,7 +291,6 @@ fun BillDetailScreen(
                         tint = CatMauve,
                         modifier = Modifier.weight(1f)
                     ) {
-                        val nextDue = ReminderScheduler.getNextDueDate(currentBill)
                         val shareText = "${currentBill.name}\n" +
                             "Amount: ${CurrencyFormatter.format(currentBill.amount, currentBill.currency)}\n" +
                             "Due: ${dateFormat.format(Date(nextDue))}\n" +
@@ -305,7 +305,6 @@ fun BillDetailScreen(
             }
 
             item {
-                val nextDue = ReminderScheduler.getNextDueDate(currentBill)
                 val holidayNote = HolidayCalendar.getHolidayNote(nextDue)
                 SectionHeading("Details")
                 Spacer(Modifier.height(8.dp))

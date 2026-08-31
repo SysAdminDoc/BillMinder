@@ -5,6 +5,11 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+ksp {
+    // Exported schemas are what the migration tests validate against.
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 android {
     namespace = "com.sysadmindoc.billminder"
     compileSdk = 35

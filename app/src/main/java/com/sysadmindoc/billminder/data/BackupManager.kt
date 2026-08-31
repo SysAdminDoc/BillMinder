@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
+import com.sysadmindoc.billminder.domain.CycleEngine
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
@@ -52,7 +53,8 @@ object BackupManager {
                 payment.copy(
                     id = 0,
                     billId = newBillId,
-                    currency = CurrencyCatalog.find(payment.currency).code
+                    currency = CurrencyCatalog.find(payment.currency).code,
+                    cycleKey = payment.cycleKey.ifBlank { CycleEngine.cycleKeyForInstant(payment.dueDate) }
                 )
             )
         }
@@ -123,7 +125,9 @@ object BackupManager {
                     recurrence = recurrence,
                     isAutoPay = CsvValueParser.boolean(table.value(row, CsvField.AUTO_PAY, mapping)),
                     notes = table.value(row, CsvField.NOTES, mapping),
-                    currency = currency
+                    currency = currency,
+                    // Anchor on the imported due date so historical rows land on real occurrences.
+                    anchorEpochDay = dueDate?.let { CycleEngine.toLocalDate(it).toEpochDay() } ?: 0L
                 )
             ).also {
                 billIds[key] = it
@@ -139,19 +143,26 @@ object BackupManager {
                 ?.let { if (mapping.absoluteAmounts) kotlin.math.abs(it) else it }
                 ?: paymentDate?.let { amount }
             if (paymentDate != null && paymentAmount != null && paymentAmount > 0.0) {
-                repo.insertPayment(
+                // Snap the payment onto the bill's own occurrence so imports cannot invent a cycle.
+                val importedBill = repo.getBillById(billId)
+                val settledDate = CycleEngine.toLocalDate(dueDate ?: paymentDate)
+                val cycleDate = importedBill
+                    ?.let { CycleEngine.occurrenceOnOrAfter(it, settledDate) }
+                    ?: settledDate
+                val inserted = repo.insertPayment(
                     Payment(
                         billId = billId,
                         amount = paymentAmount,
                         paidAt = paymentDate,
-                        dueDate = dueDate ?: paymentDate,
+                        dueDate = CycleEngine.dueInstant(cycleDate),
                         confirmationNumber = table.value(row, CsvField.CONFIRMATION, mapping),
                         currency = CurrencyCatalog.find(
                             table.value(row, CsvField.PAYMENT_CURRENCY, mapping).ifBlank { currency }
-                        ).code
+                        ).code,
+                        cycleKey = CycleEngine.cycleKey(cycleDate)
                     )
                 )
-                paymentsImported++
+                if (inserted > 0L) paymentsImported++ else rowsSkipped++
             }
         }
         return CsvImportResult(billsImported, paymentsImported, rowsSkipped)

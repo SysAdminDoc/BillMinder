@@ -21,7 +21,7 @@ import com.sysadmindoc.billminder.data.BillRepository
 import com.sysadmindoc.billminder.data.CurrencyConverter
 import com.sysadmindoc.billminder.data.CurrencyFormatter
 import com.sysadmindoc.billminder.data.CurrencyPrefs
-import com.sysadmindoc.billminder.notification.ReminderScheduler
+import com.sysadmindoc.billminder.domain.BillCycles
 
 class BillMinderWidget : GlanceAppWidget() {
 
@@ -32,17 +32,15 @@ class BillMinderWidget : GlanceAppWidget() {
         val displayCurrency = CurrencyPrefs.getDisplayCurrency(context)
         val manualRates = CurrencyPrefs.getManualRates(context)
 
-        val upcoming = bills.map { bill ->
-            val nextDue = ReminderScheduler.getNextDueDate(bill)
-            val now = System.currentTimeMillis()
-            val daysUntil = ((nextDue - now) / (1000 * 60 * 60 * 24)).toInt()
-            val payment = repo.getPaymentForBillDue(bill.id, nextDue)
+        val payments = repo.getAllPaymentsForExport()
+        val upcoming = bills.mapNotNull { bill ->
+            val cycle = BillCycles.resolve(bill, payments) ?: return@mapNotNull null
             WidgetBillItem(
                 name = bill.name,
                 amount = bill.amount,
-                daysUntilDue = daysUntil,
-                isPaid = payment != null,
-                isOverdue = payment == null && daysUntil < 0,
+                daysUntilDue = cycle.daysUntilDue,
+                isPaid = cycle.isPaid,
+                isOverdue = cycle.isOverdue,
                 isAutoPay = bill.isAutoPay,
                 currency = bill.currency
             )

@@ -5,6 +5,8 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.sysadmindoc.billminder.data.*
+import com.sysadmindoc.billminder.domain.BillCycles
+import com.sysadmindoc.billminder.domain.CycleEngine
 import com.sysadmindoc.billminder.notification.ReminderScheduler
 import com.sysadmindoc.billminder.notification.ReminderPrefs
 import com.sysadmindoc.billminder.security.EncryptedAttachment
@@ -15,6 +17,8 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.Calendar
 
 data class BillWithStatus(
@@ -22,7 +26,9 @@ data class BillWithStatus(
     val nextDueDate: Long,
     val daysUntilDue: Int,
     val isPaidThisCycle: Boolean,
-    val isOverdue: Boolean
+    val isOverdue: Boolean,
+    val cycleKey: String = "",
+    val cycleDate: LocalDate? = null
 )
 
 data class MonthlySummary(
@@ -80,6 +86,31 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
     val lastDeletedBill: StateFlow<Bill?> = _lastDeletedBill
     private var lastDeletedPayees: List<PayeeDraft> = emptyList()
 
+    /** One resolution path for every list, summary, and detail surface in the app. */
+    private fun statusesFor(billList: List<Bill>, paymentList: List<Payment>): List<BillWithStatus> {
+        val zone = ZoneId.systemDefault()
+        val today = LocalDate.now(zone)
+        val paidByBill = BillCycles.paidKeys(paymentList)
+        return billList.mapNotNull { bill ->
+            val cycle = BillCycles.resolve(
+                bill = bill,
+                paidKeys = paidByBill[bill.id].orEmpty(),
+                payments = paymentList,
+                today = today,
+                zone = zone
+            ) ?: return@mapNotNull null
+            BillWithStatus(
+                bill = bill,
+                nextDueDate = cycle.dueAt,
+                daysUntilDue = cycle.daysUntilDue,
+                isPaidThisCycle = cycle.isPaid,
+                isOverdue = cycle.isOverdue,
+                cycleKey = cycle.cycleKey,
+                cycleDate = cycle.date
+            )
+        }
+    }
+
     private suspend fun refreshExternalSurfaces() {
         WearSync.sync(getApplication())
         WidgetUpdater.updateAll(getApplication())
@@ -114,14 +145,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
             filtered = filtered.filter { it.category == catFilter }
         }
 
-        val mapped = filtered.map { bill ->
-            val nextDue = ReminderScheduler.getNextDueDate(bill)
-            val now = System.currentTimeMillis()
-            val daysUntil = ((nextDue - now) / (1000 * 60 * 60 * 24)).toInt()
-            val isPaid = paymentList.any { it.billId == bill.id && it.dueDate == nextDue }
-            val isOverdue = !isPaid && daysUntil < 0
-            BillWithStatus(bill, nextDue, daysUntil, isPaid, isOverdue)
-        }
+        val mapped = statusesFor(filtered, paymentList)
 
         when (sort) {
             SortMode.DUE_DATE -> mapped.sortedWith(
@@ -141,20 +165,13 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         val toDisplay: (Double, String) -> Double = { amount, currency ->
             CurrencyConverter.convert(amount, currency, targetCurrency, manualRates)
         }
-        val statuses = billList.map { bill ->
-            val nextDue = ReminderScheduler.getNextDueDate(bill)
-            val now = System.currentTimeMillis()
-            val daysUntil = ((nextDue - now) / (1000 * 60 * 60 * 24)).toInt()
-            val isPaid = paymentList.any { it.billId == bill.id && it.dueDate == nextDue }
-            val isOverdue = !isPaid && daysUntil < 0
-            BillWithStatus(bill, nextDue, daysUntil, isPaid, isOverdue)
-        }
+        val statuses = statusesFor(billList, paymentList)
         val paid = statuses.filter { it.isPaidThisCycle }
         val overdue = statuses.filter { it.isOverdue }
         val totalDue = statuses.sumOf { toDisplay(it.bill.amount, it.bill.currency) }
         val totalPaid = paid.sumOf { status ->
             val payment = paymentList.firstOrNull {
-                it.billId == status.bill.id && it.dueDate == status.nextDueDate
+                it.billId == status.bill.id && it.cycleKey == status.cycleKey
             }
             if (payment == null) {
                 toDisplay(status.bill.amount, status.bill.currency)
@@ -256,31 +273,26 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
             }
             val yearlyProjection = if (monthsCounted > 0) (totalLast12 / monthsCounted) * 12 else 0.0
 
-            // Forecast: compute upcoming bills in 30/60/90 days
+            // Forecast: upcoming unpaid occurrences within 30/60/90 days
             val now = System.currentTimeMillis()
-            val day30 = now + 30L * 24 * 60 * 60 * 1000
-            val day60 = now + 60L * 24 * 60 * 60 * 1000
-            val day90 = now + 90L * 24 * 60 * 60 * 1000
-            val paidCycles = allPayments
-                .asSequence()
-                .map { it.billId to it.dueDate }
-                .toSet()
+            val zone = ZoneId.systemDefault()
+            val today = LocalDate.now(zone)
+            val paidByBill = BillCycles.paidKeys(allPayments)
             var total30 = 0.0; var total60 = 0.0; var total90 = 0.0
             var count30 = 0; var count60 = 0; var count90 = 0
             allBills.filter { it.isEnabled }.forEach { bill ->
-                // Collect all due dates for this bill within 90 days
-                var dueDate = ReminderScheduler.getNextDueDate(bill)
-                val seen = mutableSetOf<Long>()
-                while (dueDate <= day90 && seen.add(dueDate)) {
-                    if (dueDate >= now && (bill.id to dueDate) !in paidCycles) {
-                        val amount = toDisplay(bill.amount, bill.currency)
-                        if (dueDate <= day30) { total30 += amount; count30++ }
-                        if (dueDate <= day60) { total60 += amount; count60++ }
-                        total90 += amount; count90++
-                    }
-                    val nextDue = ReminderScheduler.getNextDueDateAfter(bill, dueDate)
-                    if (nextDue == null || nextDue <= dueDate) break
-                    dueDate = nextDue
+                val amount = toDisplay(bill.amount, bill.currency)
+                BillCycles.unpaidOccurrences(
+                    bill = bill,
+                    paidKeys = paidByBill[bill.id].orEmpty(),
+                    start = today,
+                    endInclusive = today.plusDays(90),
+                    zone = zone
+                ).forEach { date ->
+                    val daysOut = java.time.temporal.ChronoUnit.DAYS.between(today, date)
+                    if (daysOut <= 30) { total30 += amount; count30++ }
+                    if (daysOut <= 60) { total60 += amount; count60++ }
+                    total90 += amount; count90++
                 }
             }
             val forecast = ForecastData(total30, total60, total90, count30, count60, count90)
@@ -421,23 +433,26 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         paidAt: Long? = null
     ) {
         viewModelScope.launch {
-            val nextDue = ReminderScheduler.getNextDueDate(bill)
-            val existing = repo.getPaymentForBillDue(bill.id, nextDue)
-            if (existing == null) {
+            val cycle = repo.currentCycleFor(bill)
+            val inserted = if (cycle == null) {
+                -1L
+            } else {
                 repo.insertPayment(
                     Payment(
                         billId = bill.id,
                         amount = customAmount ?: bill.amount,
                         paidAt = paidAt ?: System.currentTimeMillis(),
-                        dueDate = nextDue,
+                        dueDate = CycleEngine.dueInstant(cycle),
                         confirmationNumber = confirmationNumber,
                         attachmentName = attachment?.displayName.orEmpty(),
                         attachmentFile = attachment?.fileName.orEmpty(),
                         attachmentMime = attachment?.mimeType ?: "application/octet-stream",
-                        currency = bill.currency
+                        currency = bill.currency,
+                        cycleKey = CycleEngine.cycleKey(cycle)
                     )
                 )
-            } else if (attachment != null) {
+            }
+            if (inserted <= 0L && attachment != null) {
                 EncryptedAttachmentStore.delete(getApplication(), attachment.fileName)
             }
             val nm = getApplication<Application>().getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
@@ -450,8 +465,8 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
 
     fun unmarkAsPaid(bill: Bill) {
         viewModelScope.launch {
-            val nextDue = ReminderScheduler.getNextDueDate(bill)
-            val payment = repo.getPaymentForBillDue(bill.id, nextDue)
+            val cycle = repo.currentCycleFor(bill)
+            val payment = cycle?.let { repo.getPaymentForCycle(bill.id, CycleEngine.cycleKey(it)) }
             payment?.let {
                 EncryptedAttachmentStore.delete(getApplication(), it.attachmentFile)
                 repo.deletePayment(it)

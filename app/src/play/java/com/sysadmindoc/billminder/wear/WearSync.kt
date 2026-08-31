@@ -5,7 +5,7 @@ import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
 import com.sysadmindoc.billminder.data.BillDatabase
 import com.sysadmindoc.billminder.data.BillRepository
-import com.sysadmindoc.billminder.notification.ReminderScheduler
+import com.sysadmindoc.billminder.domain.BillCycles
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -39,18 +39,17 @@ object WearSync {
         scope.launch {
             runCatching {
                 val repository = BillRepository(BillDatabase.getDatabase(appContext).billDao())
+                val payments = repository.getAllPaymentsForExport()
                 var snapshot: WearBillSnapshot? = null
                 for (bill in repository.getAllBillsList()) {
-                    val dueDate = ReminderScheduler.getNextDueDate(bill)
-                    if (repository.getPaymentForBillDue(bill.id, dueDate) == null &&
-                        (snapshot == null || dueDate < snapshot!!.dueDate)
-                    ) {
+                    val cycle = BillCycles.resolve(bill, payments) ?: continue
+                    if (!cycle.isPaid && (snapshot == null || cycle.dueAt < snapshot!!.dueDate)) {
                         snapshot = WearBillSnapshot(
                             billId = bill.id,
                             name = bill.name,
                             amount = bill.amount,
                             currency = bill.currency,
-                            dueDate = dueDate
+                            dueDate = cycle.dueAt
                         )
                     }
                 }

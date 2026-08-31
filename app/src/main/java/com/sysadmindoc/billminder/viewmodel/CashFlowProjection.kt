@@ -3,7 +3,11 @@ package com.sysadmindoc.billminder.viewmodel
 import com.sysadmindoc.billminder.data.Bill
 import com.sysadmindoc.billminder.data.CurrencyConverter
 import com.sysadmindoc.billminder.data.Payment
-import com.sysadmindoc.billminder.notification.ReminderScheduler
+import com.sysadmindoc.billminder.domain.BillCycles
+import com.sysadmindoc.billminder.domain.CycleEngine
+import java.time.YearMonth
+import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 import java.util.Calendar
 
 data class MonthlyCashFlow(
@@ -37,10 +41,9 @@ object CashFlowProjection {
         val monthStarts = (0 until 12).map { offset ->
             (firstMonth.clone() as Calendar).apply { add(Calendar.MONTH, offset) }
         }
-        val endMillis = (monthStarts.last().clone() as Calendar).apply { add(Calendar.MONTH, 1) }.timeInMillis
         val paid = DoubleArray(12)
         val outstanding = DoubleArray(12)
-        val paidCycles = payments.map { it.billId to it.dueDate }.toSet()
+        val paidByBill = BillCycles.paidKeys(payments)
         val billCurrencies = bills.associate { it.id to it.currency }
 
         payments.forEach { payment ->
@@ -51,17 +54,24 @@ object CashFlowProjection {
             }
         }
 
+        val zone = ZoneId.systemDefault()
+        val windowStart = CycleEngine.toLocalDate(monthStarts.first().timeInMillis, zone)
+        val windowEnd = windowStart.plusMonths(12).minusDays(1)
         bills.filter { it.isEnabled }.forEach { bill ->
-            var dueDate = ReminderScheduler.getNextDueDate(bill)
-            val seen = mutableSetOf<Long>()
-            while (dueDate < endMillis && seen.add(dueDate)) {
-                val monthIndex = monthIndex(monthStarts, dueDate)
-                if (monthIndex != null && (bill.id to dueDate) !in paidCycles) {
+            BillCycles.unpaidOccurrences(
+                bill = bill,
+                paidKeys = paidByBill[bill.id].orEmpty(),
+                start = windowStart,
+                endInclusive = windowEnd,
+                zone = zone
+            ).forEach { date ->
+                val monthIndex = ChronoUnit.MONTHS.between(
+                    YearMonth.from(windowStart),
+                    YearMonth.from(date)
+                ).toInt()
+                if (monthIndex in outstanding.indices) {
                     outstanding[monthIndex] += toDisplay(bill.amount, bill.currency)
                 }
-                val nextDue = ReminderScheduler.getNextDueDateAfter(bill, dueDate) ?: break
-                if (nextDue <= dueDate) break
-                dueDate = nextDue
             }
         }
 

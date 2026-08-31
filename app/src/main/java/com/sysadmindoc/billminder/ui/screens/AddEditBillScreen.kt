@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.sysadmindoc.billminder.data.*
+import com.sysadmindoc.billminder.domain.CycleEngine
 import com.sysadmindoc.billminder.ui.components.GroupDivider
 import com.sysadmindoc.billminder.ui.components.GroupedSurface
 import com.sysadmindoc.billminder.ui.components.SectionHeading
@@ -28,6 +29,13 @@ import com.sysadmindoc.billminder.ui.components.SquareToggle
 import com.sysadmindoc.billminder.ui.components.getCategoryIcon
 import com.sysadmindoc.billminder.ui.theme.*
 import com.sysadmindoc.billminder.viewmodel.BillViewModel
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
+import java.time.format.TextStyle
+import java.util.Locale
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -41,9 +49,8 @@ fun AddEditBillScreen(
     var name by remember { mutableStateOf("") }
     var amount by remember { mutableStateOf("") }
     var currency by remember { mutableStateOf("USD") }
-    var dueDay by remember { mutableStateOf("1") }
-    var dueMonth by remember { mutableStateOf<Int?>(null) }
-    var dueYear by remember { mutableStateOf<Int?>(null) }
+    var firstDueDate by remember { mutableStateOf(LocalDate.now()) }
+    var showDatePicker by remember { mutableStateOf(false) }
     var category by remember { mutableStateOf(BillCategory.OTHER) }
     var recurrence by remember { mutableStateOf(Recurrence.MONTHLY) }
     var isAutoPay by remember { mutableStateOf(false) }
@@ -63,6 +70,7 @@ fun AddEditBillScreen(
     val payees = remember { mutableStateListOf<PayeeDraft>() }
     var selectedColor by remember { mutableLongStateOf(CatBlue.value.toLong()) }
     var isLoaded by remember { mutableStateOf(billId == null) }
+    var loadedBill by remember { mutableStateOf<Bill?>(null) }
 
     val isEditing = billId != null && billId != 0L
 
@@ -72,9 +80,8 @@ fun AddEditBillScreen(
             name = bill.name
             amount = bill.amount.toBigDecimal().stripTrailingZeros().toPlainString()
             currency = CurrencyCatalog.find(bill.currency).code
-            dueDay = bill.dueDay.toString()
-            dueMonth = bill.dueMonth
-            dueYear = bill.dueYear
+            loadedBill = bill
+            firstDueDate = CycleEngine.anchor(bill)
             category = bill.category
             recurrence = bill.recurrence
             isAutoPay = bill.isAutoPay
@@ -104,8 +111,6 @@ fun AddEditBillScreen(
 
     fun saveBill() {
         val parsedAmount = amount.toDoubleOrNull() ?: 0.0
-        val maxDueValue = if (recurrence == Recurrence.WEEKLY || recurrence == Recurrence.BIWEEKLY) 7 else 31
-        val parsedDay = dueDay.toIntOrNull()?.coerceIn(1, maxDueValue) ?: 1
         val parsedMin = if (isVariableAmount) amountMin.toDoubleOrNull() else null
         val parsedMax = if (isVariableAmount) amountMax.toDoubleOrNull() else null
         if (name.isBlank() || parsedAmount <= 0) return
@@ -139,9 +144,11 @@ fun AddEditBillScreen(
             id = if (isEditing) billId!! else 0,
             name = name.trim(),
             amount = parsedAmount,
-            dueDay = parsedDay,
-            dueMonth = dueMonth,
-            dueYear = dueYear,
+            dueDay = CycleEngine.legacyDueDay(recurrence, firstDueDate, firstDueDate.dayOfMonth),
+            dueMonth = firstDueDate.monthValue - 1,
+            dueYear = firstDueDate.year,
+            anchorEpochDay = firstDueDate.toEpochDay(),
+            createdAt = loadedBill?.createdAt ?: System.currentTimeMillis(),
             category = category,
             recurrence = recurrence,
             isAutoPay = isAutoPay,
@@ -545,23 +552,24 @@ fun AddEditBillScreen(
             }
 
             OutlinedTextField(
-                value = dueDay,
-                onValueChange = { v ->
-                    val num = v.filter { it.isDigit() }
-                    if (num.length <= 2) dueDay = num
-                },
+                value = firstDueDate.format(anchorDateFormat),
+                onValueChange = {},
                 label = {
                     Text(
-                        when (recurrence) {
-                            Recurrence.WEEKLY, Recurrence.BIWEEKLY -> "Day of Week (1=Sun, 7=Sat)"
-                            else -> "Day of Month (1-31)"
-                        }
+                        if (recurrence == Recurrence.ONE_TIME) "Due date" else "First due date"
                     )
                 },
+                readOnly = true,
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(),
+                enabled = false,
+                trailingIcon = { Icon(Icons.Filled.CalendarMonth, null, tint = CatSubtext0) },
+                modifier = Modifier.fillMaxWidth().clickable { showDatePicker = true },
                 colors = billFieldColors()
+            )
+            Text(
+                text = anchorHint(recurrence, firstDueDate),
+                style = MaterialTheme.typography.bodySmall,
+                color = CatSubtext0
             )
 
             }
@@ -726,7 +734,45 @@ fun AddEditBillScreen(
             Spacer(Modifier.height(32.dp))
         }
     }
+
+    if (showDatePicker) {
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = firstDueDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        )
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            colors = DatePickerDefaults.colors(containerColor = CatSurface0),
+            confirmButton = {
+                TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let { millis ->
+                        firstDueDate = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
+                    }
+                    showDatePicker = false
+                }) { Text("Set", color = CatBlue) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("Cancel", color = CatSubtext0) }
+            }
+        ) {
+            DatePicker(state = pickerState, colors = DatePickerDefaults.colors(containerColor = CatSurface0))
+        }
+    }
 }
+
+/** Plain-language summary of what the picked date means for the chosen recurrence. */
+private fun anchorHint(recurrence: Recurrence, date: LocalDate): String = when (recurrence) {
+    Recurrence.ONE_TIME -> "Due once on ${date.format(anchorDateFormat)}."
+    Recurrence.WEEKLY -> "Repeats every ${date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault())}."
+    Recurrence.BIWEEKLY ->
+        "Repeats every other ${date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault())}."
+    Recurrence.MONTHLY -> "Repeats on day ${date.dayOfMonth} of each month."
+    Recurrence.QUARTERLY -> "Repeats on day ${date.dayOfMonth} every three months."
+    Recurrence.YEARLY ->
+        "Repeats every ${date.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${date.dayOfMonth}."
+}
+
+private val anchorDateFormat: DateTimeFormatter =
+    DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
 
 @Composable
 private fun billFieldColors() = OutlinedTextFieldDefaults.colors(

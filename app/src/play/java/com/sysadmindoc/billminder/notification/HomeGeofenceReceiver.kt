@@ -7,6 +7,7 @@ import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofencingEvent
 import com.sysadmindoc.billminder.data.BillDatabase
 import com.sysadmindoc.billminder.data.BillRepository
+import com.sysadmindoc.billminder.domain.BillCycles
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -22,26 +23,21 @@ class HomeGeofenceReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val repository = BillRepository(BillDatabase.getDatabase(context).billDao())
-                val now = System.currentTimeMillis()
+                val payments = repository.getAllPaymentsForExport()
                 repository.getAllBillsList()
-                    .map { bill ->
-                        val nextDue = ReminderScheduler.getNextDueDate(bill)
-                        val payment = repository.getPaymentForBillDue(bill.id, nextDue)
-                        val daysUntilDue = ((nextDue - now) / (24 * 60 * 60 * 1000L)).toInt()
-                        bill to Triple(nextDue, payment == null, daysUntilDue)
-                    }
-                    .filter { (_, state) -> state.second }
-                    .sortedBy { (_, state) -> state.third }
+                    .mapNotNull { bill -> BillCycles.resolve(bill, payments)?.let { bill to it } }
+                    .filter { (_, cycle) -> !cycle.isPaid }
+                    .sortedBy { (_, cycle) -> cycle.daysUntilDue }
                     .take(3)
-                    .forEach { (bill, state) ->
+                    .forEach { (bill, cycle) ->
                         NotificationHelper.showReminderNotification(
                             context = context,
                             billId = bill.id,
                             billName = "Home reminder: ${bill.name}",
                             amount = bill.amount,
-                            daysUntilDue = state.third,
+                            daysUntilDue = cycle.daysUntilDue,
                             isAutoPay = bill.isAutoPay,
-                            nextDueDate = state.first,
+                            nextDueDate = cycle.dueAt,
                             currency = bill.currency
                         )
                     }

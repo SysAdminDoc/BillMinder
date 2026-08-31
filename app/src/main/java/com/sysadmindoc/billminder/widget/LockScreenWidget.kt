@@ -22,18 +22,17 @@ import androidx.glance.unit.ColorProvider
 import com.sysadmindoc.billminder.MainActivity
 import com.sysadmindoc.billminder.data.BillDatabase
 import com.sysadmindoc.billminder.data.BillRepository
-import com.sysadmindoc.billminder.notification.ReminderScheduler
+import com.sysadmindoc.billminder.domain.BillCycles
 
 class LockScreenWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val repository = BillRepository(BillDatabase.getDatabase(context).billDao())
+        val payments = repository.getAllPaymentsForExport()
         var next: LockScreenBill? = null
         for (bill in repository.getAllBillsList()) {
-            val dueDate = ReminderScheduler.getNextDueDate(bill)
-            if (repository.getPaymentForBillDue(bill.id, dueDate) == null &&
-                (next == null || dueDate < next!!.dueDate)
-            ) {
-                next = LockScreenBill(bill.name, dueDate, true)
+            val cycle = BillCycles.resolve(bill, payments) ?: continue
+            if (!cycle.isPaid && (next == null || cycle.dueAt < next!!.dueDate)) {
+                next = LockScreenBill(bill.name, cycle.dueAt, true)
             }
         }
 

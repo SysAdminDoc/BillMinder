@@ -1,6 +1,9 @@
 package com.sysadmindoc.billminder.data
 
+import com.sysadmindoc.billminder.domain.CycleEngine
 import kotlinx.coroutines.flow.Flow
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.Calendar
 
 class BillRepository(private val dao: BillDao) {
@@ -26,9 +29,9 @@ class BillRepository(private val dao: BillDao) {
 
     suspend fun getBillById(id: Long): Bill? = dao.getBillById(id)
 
-    suspend fun insertBill(bill: Bill): Long = dao.insertBill(bill)
+    suspend fun insertBill(bill: Bill): Long = dao.insertBill(CycleEngine.normalize(bill))
 
-    suspend fun updateBill(bill: Bill) = dao.updateBill(bill)
+    suspend fun updateBill(bill: Bill) = dao.updateBill(CycleEngine.normalize(bill))
 
     suspend fun deleteBill(bill: Bill) = dao.deleteBill(bill)
 
@@ -38,8 +41,21 @@ class BillRepository(private val dao: BillDao) {
 
     suspend fun deletePayment(payment: Payment) = dao.deletePayment(payment)
 
-    suspend fun getPaymentForBillDue(billId: Long, dueDate: Long): Payment? =
-        dao.getPaymentForBillDue(billId, dueDate)
+    suspend fun getPaymentForCycle(billId: Long, cycleKey: String): Payment? =
+        dao.getPaymentForCycle(billId, cycleKey)
+
+    suspend fun getPaidCycleKeys(billId: Long): Set<String> =
+        dao.getPaidCycleKeys(billId).toSet()
+
+    /** The occurrence [bill] is currently sitting on: the oldest unpaid one, else the next. */
+    suspend fun currentCycleFor(
+        bill: Bill,
+        today: LocalDate = LocalDate.now(ZoneId.systemDefault()),
+        zone: ZoneId = ZoneId.systemDefault()
+    ): LocalDate? {
+        val paid = getPaidCycleKeys(bill.id)
+        return CycleEngine.currentCycle(bill, today, { it in paid }, zone)
+    }
 
     suspend fun getAllBillsList(): List<Bill> = dao.getAllBillsList()
 

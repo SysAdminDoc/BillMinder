@@ -7,8 +7,11 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.sysadmindoc.billminder.domain.CycleEngine
+import java.time.LocalDate
+import java.time.ZoneId
 
-@Database(entities = [Bill::class, Payment::class, BillPayee::class], version = 6, exportSchema = false)
+@Database(entities = [Bill::class, Payment::class, BillPayee::class], version = 7, exportSchema = true)
 @TypeConverters(Converters::class)
 abstract class BillDatabase : RoomDatabase() {
     abstract fun billDao(): BillDao
@@ -61,15 +64,115 @@ abstract class BillDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Gives every bill a stored anchor date and every payment a canonical cycle key, then
+         * rebuilds the payments table so a bill and cycle can only ever hold one payment.
+         */
+        internal val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE bills ADD COLUMN anchorEpochDay INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE payments ADD COLUMN cycleKey TEXT NOT NULL DEFAULT ''")
+
+                backfillAnchors(db)
+                backfillCycleKeys(db)
+
+                db.execSQL("DELETE FROM payments WHERE billId NOT IN (SELECT id FROM bills)")
+                db.execSQL(
+                    "DELETE FROM payments WHERE id NOT IN " +
+                        "(SELECT MIN(id) FROM payments GROUP BY billId, cycleKey)"
+                )
+
+                db.execSQL(
+                    "CREATE TABLE payments_new (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "billId INTEGER NOT NULL, amount REAL NOT NULL, paidAt INTEGER NOT NULL, " +
+                        "dueDate INTEGER NOT NULL, note TEXT NOT NULL, " +
+                        "confirmationNumber TEXT NOT NULL, attachmentName TEXT NOT NULL, " +
+                        "attachmentFile TEXT NOT NULL, attachmentMime TEXT NOT NULL, " +
+                        "currency TEXT NOT NULL, cycleKey TEXT NOT NULL, " +
+                        "FOREIGN KEY(billId) REFERENCES bills(id) ON UPDATE NO ACTION ON DELETE CASCADE)"
+                )
+                db.execSQL(
+                    "INSERT INTO payments_new (id, billId, amount, paidAt, dueDate, note, " +
+                        "confirmationNumber, attachmentName, attachmentFile, attachmentMime, " +
+                        "currency, cycleKey) SELECT id, billId, amount, paidAt, dueDate, note, " +
+                        "confirmationNumber, attachmentName, attachmentFile, attachmentMime, " +
+                        "currency, cycleKey FROM payments"
+                )
+                db.execSQL("DROP TABLE payments")
+                db.execSQL("ALTER TABLE payments_new RENAME TO payments")
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS index_payments_billId_cycleKey " +
+                        "ON payments (billId, cycleKey)"
+                )
+            }
+
+            private fun backfillAnchors(db: SupportSQLiteDatabase) {
+                val zone = ZoneId.systemDefault()
+                val rows = mutableListOf<Pair<Long, Long>>()
+                db.query(
+                    "SELECT id, dueDay, dueMonth, dueYear, recurrence, createdAt FROM bills"
+                ).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val id = cursor.getLong(0)
+                        val template = Bill(
+                            id = id,
+                            name = "",
+                            amount = 0.0,
+                            dueDay = cursor.getInt(1),
+                            dueMonth = if (cursor.isNull(2)) null else cursor.getInt(2),
+                            dueYear = if (cursor.isNull(3)) null else cursor.getInt(3),
+                            recurrence = runCatching { Recurrence.valueOf(cursor.getString(4)) }
+                                .getOrDefault(Recurrence.MONTHLY),
+                            createdAt = cursor.getLong(5)
+                        )
+                        val reference = CycleEngine.toLocalDate(template.createdAt, zone)
+                        rows.add(id to CycleEngine.deriveAnchor(template, reference).toEpochDay())
+                    }
+                }
+                rows.forEach { (id, epochDay) ->
+                    db.execSQL("UPDATE bills SET anchorEpochDay = ? WHERE id = ?", arrayOf<Any>(epochDay, id))
+                }
+            }
+
+            private fun backfillCycleKeys(db: SupportSQLiteDatabase) {
+                val zone = ZoneId.systemDefault()
+                val rows = mutableListOf<Pair<Long, String>>()
+                db.query("SELECT id, dueDate FROM payments").use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val id = cursor.getLong(0)
+                        val dueDate = cursor.getLong(1)
+                        val date = if (dueDate > 0L) {
+                            CycleEngine.toLocalDate(dueDate, zone)
+                        } else {
+                            LocalDate.ofEpochDay(0L)
+                        }
+                        rows.add(id to CycleEngine.cycleKey(date))
+                    }
+                }
+                rows.forEach { (id, key) ->
+                    db.execSQL("UPDATE payments SET cycleKey = ? WHERE id = ?", arrayOf<Any>(key, id))
+                }
+            }
+        }
+
+        internal val ALL_MIGRATIONS = arrayOf(
+            MIGRATION_1_2,
+            MIGRATION_2_3,
+            MIGRATION_3_4,
+            MIGRATION_4_5,
+            MIGRATION_5_6,
+            MIGRATION_6_7
+        )
+
         fun getDatabase(context: Context): BillDatabase {
             return INSTANCE ?: synchronized(this) {
-                Room.databaseBuilder(
+                INSTANCE ?: Room.databaseBuilder(
                     context.applicationContext,
                     BillDatabase::class.java,
                     "billminder.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
-                    .fallbackToDestructiveMigration()
+                    .addMigrations(*ALL_MIGRATIONS)
                     .build()
                     .also { INSTANCE = it }
             }

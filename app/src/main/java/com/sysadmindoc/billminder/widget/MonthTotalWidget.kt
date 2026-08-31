@@ -21,9 +21,10 @@ import com.sysadmindoc.billminder.data.BillRepository
 import com.sysadmindoc.billminder.data.CurrencyConverter
 import com.sysadmindoc.billminder.data.CurrencyFormatter
 import com.sysadmindoc.billminder.data.CurrencyPrefs
-import com.sysadmindoc.billminder.notification.ReminderScheduler
+import com.sysadmindoc.billminder.domain.BillCycles
+import com.sysadmindoc.billminder.domain.CycleEngine
 import java.text.SimpleDateFormat
-import java.util.Calendar
+import java.time.LocalDate
 import java.util.Date
 import java.util.Locale
 
@@ -35,21 +36,11 @@ class MonthTotalWidget : GlanceAppWidget() {
         val bills = repo.getAllBillsList()
         val displayCurrency = CurrencyPrefs.getDisplayCurrency(context)
         val manualRates = CurrencyPrefs.getManualRates(context)
-        val monthStart = Calendar.getInstance().apply {
-            set(Calendar.DAY_OF_MONTH, 1)
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }.timeInMillis
-        val monthEnd = Calendar.getInstance().apply {
-            set(Calendar.DAY_OF_MONTH, 1)
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-            add(Calendar.MONTH, 1)
-        }.timeInMillis
+        val payments = repo.getAllPaymentsForExport()
+        val today = LocalDate.now()
+        val monthStart = today.withDayOfMonth(1)
+        val monthEnd = monthStart.plusMonths(1).minusDays(1)
+        val paidByBill = BillCycles.paidKeys(payments)
 
         var totalDue = 0.0
         var totalPaid = 0.0
@@ -57,27 +48,21 @@ class MonthTotalWidget : GlanceAppWidget() {
         var totalCount = 0
 
         bills.forEach { bill ->
-            var nextDue = ReminderScheduler.getNextDueDate(bill)
-            val seen = mutableSetOf<Long>()
-            while (nextDue < monthEnd && seen.add(nextDue)) {
-                if (nextDue >= monthStart) {
-                    val payment = repo.getPaymentForBillDue(bill.id, nextDue)
-                    totalDue += CurrencyConverter.convert(bill.amount, bill.currency, displayCurrency, manualRates)
-                    totalCount++
-                    if (payment != null) {
-                        totalPaid += CurrencyConverter.convert(
-                            payment.amount,
-                            payment.currency.ifBlank { bill.currency },
-                            displayCurrency,
-                            manualRates
-                        )
-                        paidCount++
-                    }
+            val paidKeys = paidByBill[bill.id].orEmpty()
+            CycleEngine.occurrencesInRange(bill, monthStart, monthEnd).forEach { date ->
+                val key = CycleEngine.cycleKey(date)
+                totalDue += CurrencyConverter.convert(bill.amount, bill.currency, displayCurrency, manualRates)
+                totalCount++
+                if (key in paidKeys) {
+                    val payment = payments.firstOrNull { it.billId == bill.id && it.cycleKey == key }
+                    totalPaid += CurrencyConverter.convert(
+                        payment?.amount ?: bill.amount,
+                        payment?.currency?.ifBlank { bill.currency } ?: bill.currency,
+                        displayCurrency,
+                        manualRates
+                    )
+                    paidCount++
                 }
-                val following = ReminderScheduler.getNextDueDateAfter(bill, nextDue)
-                    ?: break
-                if (following <= nextDue) break
-                nextDue = following
             }
         }
 

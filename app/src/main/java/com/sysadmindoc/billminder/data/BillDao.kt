@@ -46,11 +46,17 @@ interface BillDao {
     @Query("SELECT * FROM payments WHERE paidAt >= :startOfMonth AND paidAt < :endOfMonth ORDER BY paidAt DESC")
     fun getPaymentsForMonth(startOfMonth: Long, endOfMonth: Long): Flow<List<Payment>>
 
-    @Query("SELECT * FROM payments WHERE billId = :billId AND dueDate = :dueDate LIMIT 1")
-    suspend fun getPaymentForBillDue(billId: Long, dueDate: Long): Payment?
+    @Query("SELECT * FROM payments WHERE billId = :billId AND cycleKey = :cycleKey LIMIT 1")
+    suspend fun getPaymentForCycle(billId: Long, cycleKey: String): Payment?
+
+    @Query("SELECT cycleKey FROM payments WHERE billId = :billId")
+    suspend fun getPaidCycleKeys(billId: Long): List<String>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertPayment(payment: Payment): Long
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertPayment(payment: Payment): Long
+    suspend fun upsertPayment(payment: Payment): Long
 
     @Delete
     suspend fun deletePayment(payment: Payment)

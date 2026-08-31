@@ -2,6 +2,16 @@
 
 All notable changes to BillMinder will be documented in this file.
 
+## [Unreleased]
+
+- Every bill now stores the date its schedule starts from, and every occurrence is derived from that date. Recurring bills no longer drift as the current date moves, and biweekly and quarterly cycles keep their phase.
+- Payments are recorded against a cycle key instead of a recomputed timestamp. The same occurrence can only be paid once, so marking a bill paid twice (from the app, a notification, the watch, or an import) records one payment.
+- Unpaid occurrences stay overdue instead of quietly rolling forward to the next cycle.
+- The add and edit form now takes a due date from a date picker, so one-time and yearly bills can be entered properly. Day-of-month and day-of-week number entry is gone.
+- The calendar shows real occurrences. A weekly bill no longer paints its day-of-week number onto that day of the month.
+- Removed the destructive database fallback that could erase saved bills and payments on an unexpected schema change, and started exporting Room schemas.
+- Reminder broadcasts now finish their database work before the receiver is released, and alarms carry the cycle they belong to.
+
 ## [v2.4.0]: 2026-08-31
 
 - Reworked all six primary screens from approved image references using a deeper midnight ledger palette.

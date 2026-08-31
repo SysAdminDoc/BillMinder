@@ -67,7 +67,9 @@ import com.sysadmindoc.billminder.ui.theme.CatText
 import com.sysadmindoc.billminder.ui.theme.storedBillColor
 import com.sysadmindoc.billminder.viewmodel.BillViewModel
 import com.sysadmindoc.billminder.viewmodel.BillWithStatus
+import com.sysadmindoc.billminder.domain.CycleEngine
 import java.text.SimpleDateFormat
+import java.time.LocalDate
 import java.util.Calendar
 import java.util.Locale
 
@@ -97,15 +99,13 @@ fun CalendarScreen(
     val monthFormat = remember { SimpleDateFormat("MMMM yyyy", Locale.getDefault()) }
     val selectedDateFormat = remember { SimpleDateFormat("EEEE, MMMM d", Locale.getDefault()) }
 
-    val billsByDay = remember(billsWithStatus, currentMonth, currentYear, daysInMonth) {
+    val billsByDay = remember(billsWithStatus, currentMonth, currentYear) {
+        val monthStart = LocalDate.of(currentYear, currentMonth + 1, 1)
+        val monthEnd = monthStart.plusMonths(1).minusDays(1)
         val result = mutableMapOf<Int, MutableList<BillWithStatus>>()
         billsWithStatus.forEach { status ->
-            val due = Calendar.getInstance().apply { timeInMillis = status.nextDueDate }
-            if (due.get(Calendar.MONTH) == currentMonth && due.get(Calendar.YEAR) == currentYear) {
-                result.getOrPut(due.get(Calendar.DAY_OF_MONTH)) { mutableListOf() }.add(status)
-            }
-            if (status.bill.dueDay in 1..daysInMonth && status.bill.recurrence.name != "ONE_TIME") {
-                val list = result.getOrPut(status.bill.dueDay) { mutableListOf() }
+            CycleEngine.occurrencesInRange(status.bill, monthStart, monthEnd).forEach { date ->
+                val list = result.getOrPut(date.dayOfMonth) { mutableListOf() }
                 if (list.none { it.bill.id == status.bill.id }) list.add(status)
             }
         }

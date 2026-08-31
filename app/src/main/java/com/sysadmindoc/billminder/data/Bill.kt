@@ -1,6 +1,8 @@
 package com.sysadmindoc.billminder.data
 
 import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 enum class BillCategory(val label: String) {
@@ -75,10 +77,26 @@ data class Bill(
     val isVariableAmount: Boolean = false,
     val amountMin: Double? = null,
     val amountMax: Double? = null,
-    val currency: String = "USD"
+    val currency: String = "USD",
+    /**
+     * Epoch day of this bill's first occurrence. Every later occurrence is derived from it, so the
+     * recurrence rule no longer drifts with the current date. Zero means "not yet normalized".
+     */
+    val anchorEpochDay: Long = 0L
 )
 
-@Entity(tableName = "payments")
+@Entity(
+    tableName = "payments",
+    foreignKeys = [
+        ForeignKey(
+            entity = Bill::class,
+            parentColumns = ["id"],
+            childColumns = ["billId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index(value = ["billId", "cycleKey"], unique = true)]
+)
 data class Payment(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
@@ -91,5 +109,7 @@ data class Payment(
     val attachmentName: String = "",
     val attachmentFile: String = "",
     val attachmentMime: String = "application/octet-stream",
-    val currency: String = "USD"
+    val currency: String = "USD",
+    /** ISO local date of the occurrence this payment settles. Unique per bill. */
+    val cycleKey: String = ""
 )

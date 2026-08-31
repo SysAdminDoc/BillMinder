@@ -7,7 +7,9 @@ import android.content.Intent
 import android.os.Build
 import com.sysadmindoc.billminder.data.Bill
 import com.sysadmindoc.billminder.data.HolidayCalendar
-import com.sysadmindoc.billminder.data.Recurrence
+import com.sysadmindoc.billminder.domain.CycleEngine
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.Calendar
 
 object ReminderScheduler {
@@ -17,34 +19,43 @@ object ReminderScheduler {
 
         if (ReminderPrefs.isVacationMode(context) && bill.isAutoPay) return
 
-        var scheduledDueDate = getNextDueDate(bill)
-        var reminderTime = getReminderTime(scheduledDueDate, bill.reminderTiming.days)
+        val zone = ZoneId.systemDefault()
+        val today = LocalDate.now(zone)
+        var cycle = CycleEngine.occurrenceOnOrAfter(bill, today, zone) ?: return
+        var reminderTime = getReminderTime(CycleEngine.dueInstant(cycle, zone), bill.reminderTiming.days)
 
-        // If reminder time already passed, schedule for next occurrence
+        // If the reminder time already passed, move to the next occurrence.
         if (reminderTime.timeInMillis <= System.currentTimeMillis()) {
-            val nextNext = getNextDueDateAfter(bill, scheduledDueDate)
-            if (nextNext != null) {
-                scheduledDueDate = nextNext
-                reminderTime = getReminderTime(scheduledDueDate, bill.reminderTiming.days)
+            val following = CycleEngine.occurrenceAfter(bill, cycle, zone)
+            if (following != null) {
+                cycle = following
+                reminderTime = getReminderTime(CycleEngine.dueInstant(cycle, zone), bill.reminderTiming.days)
             }
         }
 
-        scheduleExactAlarm(context, bill.id, reminderTime.timeInMillis, bill.reminderTiming.days)
+        val cycleKey = CycleEngine.cycleKey(cycle)
+        scheduleExactAlarm(context, bill.id, cycleKey, reminderTime.timeInMillis, bill.reminderTiming.days)
 
-        // Schedule second reminder if set
         bill.secondReminderTiming?.let { second ->
-            val secondTime = getReminderTime(scheduledDueDate, second.days)
+            val secondTime = getReminderTime(CycleEngine.dueInstant(cycle, zone), second.days)
             if (secondTime.timeInMillis > System.currentTimeMillis()) {
-                scheduleExactAlarm(context, bill.id + 50000, secondTime.timeInMillis, second.days)
+                scheduleExactAlarm(context, bill.id + SECOND_REMINDER_OFFSET, cycleKey, secondTime.timeInMillis, second.days)
             }
         }
     }
 
-    private fun scheduleExactAlarm(context: Context, requestCode: Long, triggerAtMillis: Long, daysBeforeDue: Int) {
+    private fun scheduleExactAlarm(
+        context: Context,
+        requestCode: Long,
+        cycleKey: String,
+        triggerAtMillis: Long,
+        daysBeforeDue: Int
+    ) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val intent = Intent(context, ReminderReceiver::class.java).apply {
             action = "BILL_REMINDER"
             putExtra("request_code", requestCode)
+            putExtra("cycle_key", cycleKey)
             putExtra("days_before_due", daysBeforeDue)
         }
         val pendingIntent = PendingIntent.getBroadcast(
@@ -75,10 +86,10 @@ object ReminderScheduler {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         listOf(
             billId to "BILL_REMINDER",
-            (billId + 50000) to "BILL_REMINDER",
-            (billId + 60000) to "SNOOZED_REMINDER",
-            (billId + 70000) to "CASCADE_REMINDER",
-            (billId + 80000) to "CASCADE_REMINDER"
+            (billId + SECOND_REMINDER_OFFSET) to "BILL_REMINDER",
+            (billId + SNOOZE_OFFSET) to "SNOOZED_REMINDER",
+            (billId + CASCADE_4H_OFFSET) to "CASCADE_REMINDER",
+            (billId + CASCADE_24H_OFFSET) to "CASCADE_REMINDER"
         ).forEach { (code, action) ->
             val intent = Intent(context, ReminderReceiver::class.java).apply { this.action = action }
             val pendingIntent = PendingIntent.getBroadcast(
@@ -93,85 +104,30 @@ object ReminderScheduler {
         bills.filter { it.isEnabled }.forEach { scheduleReminder(context, it) }
     }
 
-    fun getNextDueDate(bill: Bill): Long {
-        val now = Calendar.getInstance()
-        val due = Calendar.getInstance().apply {
-            set(Calendar.DAY_OF_MONTH, bill.dueDay.coerceAtMost(getActualMaximum(Calendar.DAY_OF_MONTH)))
-            set(Calendar.HOUR_OF_DAY, 23)
-            set(Calendar.MINUTE, 59)
-            set(Calendar.SECOND, 59)
-        }
-
-        return when (bill.recurrence) {
-            Recurrence.ONE_TIME -> {
-                Calendar.getInstance().apply {
-                    set(Calendar.YEAR, bill.dueYear ?: now.get(Calendar.YEAR))
-                    set(Calendar.MONTH, (bill.dueMonth ?: now.get(Calendar.MONTH)))
-                    set(Calendar.DAY_OF_MONTH, bill.dueDay.coerceAtMost(getActualMaximum(Calendar.DAY_OF_MONTH)))
-                    set(Calendar.HOUR_OF_DAY, 23)
-                    set(Calendar.MINUTE, 59)
-                }.timeInMillis
-            }
-            Recurrence.WEEKLY -> {
-                due.apply {
-                    set(Calendar.DAY_OF_WEEK, bill.dueDay.coerceIn(1, 7))
-                    if (before(now)) add(Calendar.WEEK_OF_YEAR, 1)
-                }.timeInMillis
-            }
-            Recurrence.BIWEEKLY -> {
-                due.apply {
-                    set(Calendar.DAY_OF_WEEK, bill.dueDay.coerceIn(1, 7))
-                    if (before(now)) add(Calendar.WEEK_OF_YEAR, 2)
-                }.timeInMillis
-            }
-            Recurrence.MONTHLY -> {
-                if (due.before(now)) due.add(Calendar.MONTH, 1)
-                due.set(Calendar.DAY_OF_MONTH, bill.dueDay.coerceAtMost(due.getActualMaximum(Calendar.DAY_OF_MONTH)))
-                due.timeInMillis
-            }
-            Recurrence.QUARTERLY -> {
-                if (due.before(now)) due.add(Calendar.MONTH, 3)
-                due.set(Calendar.DAY_OF_MONTH, bill.dueDay.coerceAtMost(due.getActualMaximum(Calendar.DAY_OF_MONTH)))
-                due.timeInMillis
-            }
-            Recurrence.YEARLY -> {
-                due.apply {
-                    set(Calendar.MONTH, bill.dueMonth ?: 0)
-                    set(Calendar.DAY_OF_MONTH, bill.dueDay.coerceAtMost(getActualMaximum(Calendar.DAY_OF_MONTH)))
-                    if (before(now)) add(Calendar.YEAR, 1)
-                }.timeInMillis
-            }
-        }
+    /** Due instant of the first occurrence on or after [today]; falls back to the last occurrence. */
+    fun getNextDueDate(
+        bill: Bill,
+        today: LocalDate = LocalDate.now(ZoneId.systemDefault()),
+        zone: ZoneId = ZoneId.systemDefault()
+    ): Long {
+        val date = CycleEngine.occurrenceOnOrAfter(bill, today, zone) ?: CycleEngine.anchor(bill, zone)
+        return CycleEngine.dueInstant(date, zone)
     }
 
-    fun getNextDueDateAfter(bill: Bill, afterMillis: Long): Long? {
-        if (bill.recurrence == Recurrence.ONE_TIME) return null
-        val after = Calendar.getInstance().apply { timeInMillis = afterMillis }
-        return when (bill.recurrence) {
-            Recurrence.WEEKLY -> {
-                after.add(Calendar.WEEK_OF_YEAR, 1)
-                after.timeInMillis
-            }
-            Recurrence.BIWEEKLY -> {
-                after.add(Calendar.WEEK_OF_YEAR, 2)
-                after.timeInMillis
-            }
-            Recurrence.MONTHLY -> {
-                after.add(Calendar.MONTH, 1)
-                after.set(Calendar.DAY_OF_MONTH, bill.dueDay.coerceAtMost(after.getActualMaximum(Calendar.DAY_OF_MONTH)))
-                after.timeInMillis
-            }
-            Recurrence.QUARTERLY -> {
-                after.add(Calendar.MONTH, 3)
-                after.timeInMillis
-            }
-            Recurrence.YEARLY -> {
-                after.add(Calendar.YEAR, 1)
-                after.timeInMillis
-            }
-            else -> null
-        }
+    fun getNextDueDateAfter(
+        bill: Bill,
+        afterMillis: Long,
+        zone: ZoneId = ZoneId.systemDefault()
+    ): Long? {
+        val after = CycleEngine.toLocalDate(afterMillis, zone)
+        val next = CycleEngine.occurrenceAfter(bill, after, zone) ?: return null
+        return CycleEngine.dueInstant(next, zone)
     }
+
+    const val SECOND_REMINDER_OFFSET = 50_000L
+    const val SNOOZE_OFFSET = 60_000L
+    const val CASCADE_4H_OFFSET = 70_000L
+    const val CASCADE_24H_OFFSET = 80_000L
 
     private fun getReminderTime(dueDate: Long, daysBeforeDue: Int): Calendar =
         Calendar.getInstance().apply {
