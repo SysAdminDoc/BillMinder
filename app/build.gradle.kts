@@ -117,7 +117,6 @@ dependencies {
     implementation(libs.androidx.glance.material3)
     implementation(libs.androidx.biometric)
     implementation(libs.androidx.fragment)
-    add("playImplementation", libs.play.services.location)
     add("playImplementation", libs.play.services.wearable)
     implementation(libs.mlkit.text.recognition)
     implementation(libs.gson)
