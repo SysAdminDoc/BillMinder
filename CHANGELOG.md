@@ -18,6 +18,8 @@ All notable changes to BillMinder will be documented in this file.
 - Reminders no longer stand on each other. Every alarm and notification has its own identity, so a bill's first reminder, second reminder, and overdue alert coexist, and two bills can never share an alarm no matter what their identifiers are.
 - Added an overdue alarm that fires the morning after an unpaid bill was due, instead of relying on a dismissed notification to start the follow-up chain.
 - Reminders are rebuilt after a reboot, an app update, a clock change, and a timezone change.
+- Now targets Android 16 (API 36).
+- The calendar shows the state of each individual due date rather than repeating the current cycle's state on every occurrence of a bill.
 
 ## [v2.4.0]: 2026-08-31
 
