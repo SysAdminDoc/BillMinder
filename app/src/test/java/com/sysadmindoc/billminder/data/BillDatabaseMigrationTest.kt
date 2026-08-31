@@ -195,6 +195,46 @@ class BillDatabaseMigrationTest {
         }
     }
 
+    /**
+     * Every schema the app has ever shipped is an entry point into the migration chain now that the
+     * destructive fallback is gone, so each one gets its own fixture rather than only the ends.
+     */
+    @Test
+    fun `data survives from every historical schema version`() {
+        listOf(2, 3, 4, 5, 6).forEach { version ->
+            context.deleteDatabase(name)
+            openRaw(version) { db ->
+                db.execSQL(billsDdl(version))
+                db.execSQL(paymentsDdl(version))
+                if (version >= 4) db.execSQL(V6_PAYEES)
+                db.execSQL(insertBill(version, id = 5, name = "Water $version", dueDay = 9))
+                db.execSQL(insertPayment(version, id = 40, billId = 5, dueDate = millisOf("2025-06-09")))
+                if (version >= 4) {
+                    db.execSQL(
+                        "INSERT INTO bill_payees (id, billId, name, sharePercent) " +
+                            "VALUES (2, 5, 'Jo', 100.0)"
+                    )
+                }
+            }.close()
+
+            val db = openMigrated()
+            try {
+                val bill = runBlocking { db.billDao().getBillById(5L) }
+                assertNotNull("v$version bill was lost", bill)
+                assertEquals("Water $version", bill!!.name)
+                assertTrue("v$version anchor was not backfilled", bill.anchorEpochDay > 0L)
+                val payments = runBlocking { db.billDao().getAllPaymentsForExport() }
+                assertEquals("v$version payment was lost", 1, payments.size)
+                assertEquals("2025-06-09", payments[0].cycleKey)
+                if (version >= 4) {
+                    assertEquals("v$version payee was lost", 1, runBlocking { db.billDao().getPayeesForBill(5L) }.size)
+                }
+            } finally {
+                db.close()
+            }
+        }
+    }
+
     @Test
     fun `payments land on the bill's own occurrence grid`() {
         openRaw(6) { db ->
@@ -271,6 +311,71 @@ class BillDatabaseMigrationTest {
 
     private fun millisOf(date: String): Long =
         LocalDate.parse(date).atTime(12, 0).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+    /** The bills table as it stood at [version], built from the columns each release added. */
+    private fun billsDdl(version: Int): String {
+        val columns = mutableListOf(
+            "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL", "name TEXT NOT NULL",
+            "amount REAL NOT NULL", "dueDay INTEGER NOT NULL", "dueMonth INTEGER", "dueYear INTEGER",
+            "category TEXT NOT NULL", "recurrence TEXT NOT NULL", "isAutoPay INTEGER NOT NULL",
+            "notes TEXT NOT NULL", "reminderTiming TEXT NOT NULL", "secondReminderTiming TEXT",
+            "isEnabled INTEGER NOT NULL", "createdAt INTEGER NOT NULL", "color INTEGER NOT NULL"
+        )
+        if (version >= 2) columns += listOf(
+            "paymentUrl TEXT NOT NULL DEFAULT ''", "tags TEXT NOT NULL DEFAULT ''"
+        )
+        if (version >= 3) columns += listOf(
+            "isVariableAmount INTEGER NOT NULL DEFAULT 0", "amountMin REAL", "amountMax REAL"
+        )
+        if (version >= 6) columns += "currency TEXT NOT NULL DEFAULT 'USD'"
+        return "CREATE TABLE IF NOT EXISTS bills (${columns.joinToString(", ")})"
+    }
+
+    private fun paymentsDdl(version: Int): String {
+        val columns = mutableListOf(
+            "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL", "billId INTEGER NOT NULL",
+            "amount REAL NOT NULL", "paidAt INTEGER NOT NULL", "dueDate INTEGER NOT NULL",
+            "note TEXT NOT NULL"
+        )
+        if (version >= 2) columns += "confirmationNumber TEXT NOT NULL DEFAULT ''"
+        if (version >= 5) columns += listOf(
+            "attachmentName TEXT NOT NULL DEFAULT ''", "attachmentFile TEXT NOT NULL DEFAULT ''",
+            "attachmentMime TEXT NOT NULL DEFAULT 'application/octet-stream'"
+        )
+        if (version >= 6) columns += "currency TEXT NOT NULL DEFAULT 'USD'"
+        return "CREATE TABLE IF NOT EXISTS payments (${columns.joinToString(", ")})"
+    }
+
+    private fun insertBill(version: Int, id: Long, name: String, dueDay: Int): String {
+        val names = mutableListOf(
+            "id", "name", "amount", "dueDay", "dueMonth", "dueYear", "category", "recurrence",
+            "isAutoPay", "notes", "reminderTiming", "secondReminderTiming", "isEnabled",
+            "createdAt", "color"
+        )
+        val values = mutableListOf(
+            "$id", "'$name'", "30.0", "$dueDay", "NULL", "NULL", "'UTILITIES'", "'MONTHLY'",
+            "0", "''", "'ONE_DAY'", "NULL", "1", "${millisOf("2024-01-01")}", "1"
+        )
+        if (version >= 2) { names += listOf("paymentUrl", "tags"); values += listOf("''", "''") }
+        if (version >= 3) {
+            names += listOf("isVariableAmount", "amountMin", "amountMax")
+            values += listOf("0", "NULL", "NULL")
+        }
+        if (version >= 6) { names += "currency"; values += "'USD'" }
+        return "INSERT INTO bills (${names.joinToString(", ")}) VALUES (${values.joinToString(", ")})"
+    }
+
+    private fun insertPayment(version: Int, id: Long, billId: Long, dueDate: Long): String {
+        val names = mutableListOf("id", "billId", "amount", "paidAt", "dueDate", "note")
+        val values = mutableListOf("$id", "$billId", "30.0", "$dueDate", "$dueDate", "''")
+        if (version >= 2) { names += "confirmationNumber"; values += "''" }
+        if (version >= 5) {
+            names += listOf("attachmentName", "attachmentFile", "attachmentMime")
+            values += listOf("''", "''", "'application/octet-stream'")
+        }
+        if (version >= 6) { names += "currency"; values += "'USD'" }
+        return "INSERT INTO payments (${names.joinToString(", ")}) VALUES (${values.joinToString(", ")})"
+    }
 
     private fun v6Bill(
         id: Long,

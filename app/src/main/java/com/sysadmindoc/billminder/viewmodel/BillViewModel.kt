@@ -34,8 +34,7 @@ data class BillWithStatus(
     val daysUntilDue: Int,
     val isPaidThisCycle: Boolean,
     val isOverdue: Boolean,
-    val cycleKey: String = "",
-    val cycleDate: LocalDate? = null
+    val cycleKey: String = ""
 )
 
 data class MonthlySummary(
@@ -113,8 +112,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
                 daysUntilDue = cycle.daysUntilDue,
                 isPaidThisCycle = cycle.isPaid,
                 isOverdue = cycle.isOverdue,
-                cycleKey = cycle.cycleKey,
-                cycleDate = cycle.date
+                cycleKey = cycle.cycleKey
             )
         }
     }

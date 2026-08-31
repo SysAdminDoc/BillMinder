@@ -66,10 +66,12 @@ import com.sysadmindoc.billminder.ui.theme.CatSurface0
 import com.sysadmindoc.billminder.ui.theme.CatText
 import com.sysadmindoc.billminder.ui.theme.storedBillColor
 import com.sysadmindoc.billminder.viewmodel.BillViewModel
-import com.sysadmindoc.billminder.viewmodel.BillWithStatus
+import com.sysadmindoc.billminder.data.Bill
+import com.sysadmindoc.billminder.domain.BillCycles
 import com.sysadmindoc.billminder.domain.CycleEngine
 import java.text.SimpleDateFormat
 import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 import java.util.Calendar
 import java.util.Locale
 
@@ -82,6 +84,7 @@ fun CalendarScreen(
     onAddBill: () -> Unit
 ) {
     val billsWithStatus by viewModel.billsWithStatus.collectAsState()
+    val payments by viewModel.payments.collectAsState()
     val summary by viewModel.monthlySummary.collectAsState()
     val displayCurrency by viewModel.displayCurrency.collectAsState()
     val today = remember { Calendar.getInstance() }
@@ -99,14 +102,30 @@ fun CalendarScreen(
     val monthFormat = remember { SimpleDateFormat("MMMM yyyy", Locale.getDefault()) }
     val selectedDateFormat = remember { SimpleDateFormat("EEEE, MMMM d", Locale.getDefault()) }
 
-    val billsByDay = remember(billsWithStatus, currentMonth, currentYear) {
+    // Each occurrence carries its own state. Reusing the bill's current cycle here would paint a
+    // December date red because January went unpaid, and read "320 days overdue" on a future day.
+    val billsByDay = remember(billsWithStatus, payments, currentMonth, currentYear) {
         val monthStart = LocalDate.of(currentYear, currentMonth + 1, 1)
         val monthEnd = monthStart.plusMonths(1).minusDays(1)
-        val result = mutableMapOf<Int, MutableList<BillWithStatus>>()
+        val todayDate = LocalDate.now()
+        val paidByBill = BillCycles.paidKeys(payments)
+        val result = mutableMapOf<Int, MutableList<CalendarOccurrence>>()
         billsWithStatus.forEach { status ->
+            val paidKeys = paidByBill[status.bill.id].orEmpty()
             CycleEngine.occurrencesInRange(status.bill, monthStart, monthEnd).forEach { date ->
+                val key = CycleEngine.cycleKey(date)
+                val isPaid = key in paidKeys
                 val list = result.getOrPut(date.dayOfMonth) { mutableListOf() }
-                if (list.none { it.bill.id == status.bill.id }) list.add(status)
+                if (list.none { it.bill.id == status.bill.id }) {
+                    list.add(
+                        CalendarOccurrence(
+                            bill = status.bill,
+                            isPaid = isPaid,
+                            isOverdue = !isPaid && date.isBefore(todayDate),
+                            daysUntilDue = ChronoUnit.DAYS.between(todayDate, date).toInt()
+                        )
+                    )
+                }
             }
         }
         result
@@ -304,7 +323,7 @@ fun CalendarScreen(
 @Composable
 private fun CalendarDay(
     day: Int,
-    statuses: List<BillWithStatus>,
+    statuses: List<CalendarOccurrence>,
     isSelected: Boolean,
     isToday: Boolean,
     onClick: () -> Unit,
@@ -336,7 +355,7 @@ private fun CalendarDay(
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                     statuses.take(3).forEach { status ->
                         val markerColor = when {
-                            status.isPaidThisCycle -> CatGreen
+                            status.isPaid -> CatGreen
                             status.isOverdue -> CatRed
                             status.daysUntilDue <= 3 -> com.sysadmindoc.billminder.ui.theme.CatYellow
                             else -> storedBillColor(status.bill.color)
@@ -350,16 +369,16 @@ private fun CalendarDay(
 }
 
 @Composable
-private fun CalendarBillRow(status: BillWithStatus, onClick: () -> Unit) {
+private fun CalendarBillRow(status: CalendarOccurrence, onClick: () -> Unit) {
     val stateLabel = when {
-        status.isPaidThisCycle -> "Paid"
+        status.isPaid -> "Paid"
         status.isOverdue -> "${-status.daysUntilDue} days overdue"
         status.daysUntilDue == 0 -> "Due today"
         status.daysUntilDue == 1 -> "Due tomorrow"
         else -> "Upcoming"
     }
     val stateColor = when {
-        status.isPaidThisCycle -> CatGreen
+        status.isPaid -> CatGreen
         status.isOverdue -> CatRed
         status.daysUntilDue <= 1 -> com.sysadmindoc.billminder.ui.theme.CatYellow
         else -> CatBlue
@@ -438,3 +457,11 @@ private fun CalendarMetric(label: String, value: String, color: Color, modifier:
         Text(value, color = color, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
     }
 }
+
+/** One occurrence of a bill on one calendar day, with the state of that day rather than the bill. */
+private data class CalendarOccurrence(
+    val bill: Bill,
+    val isPaid: Boolean,
+    val isOverdue: Boolean,
+    val daysUntilDue: Int
+)
