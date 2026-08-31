@@ -2,6 +2,16 @@
 
 All notable changes to BillMinder will be documented in this file.
 
+## [v2.4.0]: 2026-08-31
+
+- Reworked all six primary screens from approved image references using a deeper midnight ledger palette.
+- Tightened Home totals, bill groups, date states, and mark-paid affordances around the selected direction.
+- Refined Calendar status markers, the selected-day agenda, Insights charts, and Settings groups for closer visual parity.
+- Reordered the add/edit flow around Essentials, Schedule, reminders, and additional details. Advanced variable and split controls stay available without crowding the main form.
+- Expanded bill details with category, tags, website, payment actions, and a clearer overdue hierarchy.
+- Added matched mockup and implementation captures for every redesigned page, plus a second density and accessibility pass.
+- Fixed the swipe-delete background bleed that appeared during side-by-side visual review.
+
 ## [v2.3.0]: 2026-08-29
 
 - Rebuilt Home, Calendar, Insights, Settings, bill details, and add/edit around a compact dark ledger design.

@@ -1,10 +1,10 @@
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-2.3.0-58A6FF?style=for-the-badge">
+  <img alt="Version" src="https://img.shields.io/badge/version-2.4.0-58A6FF?style=for-the-badge">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-4ade80?style=for-the-badge">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Android-58A6FF?style=for-the-badge">
 </p>
 
-# BillMinder v2.3.0
+# BillMinder v2.4.0
 
 A bill tracking and reminder app for Android. Never miss a payment again.
 
@@ -12,11 +12,11 @@ A bill tracking and reminder app for Android. Never miss a payment again.
 
 | Home | Calendar | Insights |
 | --- | --- | --- |
-| ![Home dashboard](docs/screenshots/v2.3.0/home.png) | ![Monthly calendar](docs/screenshots/v2.3.0/calendar.png) | ![Spending insights](docs/screenshots/v2.3.0/insights.png) |
+| ![Home dashboard](docs/screenshots/v2.4.0/home.png) | ![Monthly calendar](docs/screenshots/v2.4.0/calendar.png) | ![Spending insights](docs/screenshots/v2.4.0/insights.png) |
 
 | Add bill | Bill details | Settings |
 | --- | --- | --- |
-| ![Add bill form](docs/screenshots/v2.3.0/add-bill.png) | ![Bill details](docs/screenshots/v2.3.0/bill-detail.png) | ![Settings](docs/screenshots/v2.3.0/settings.png) |
+| ![Add bill form](docs/screenshots/v2.4.0/add-bill.png) | ![Bill details](docs/screenshots/v2.4.0/bill-detail.png) | ![Settings](docs/screenshots/v2.4.0/settings.png) |
 
 ## Features
 
@@ -90,8 +90,8 @@ A bill tracking and reminder app for Android. Never miss a payment again.
 - **Lock-Screen Widget**: Keyguard-capable compact due reminder that omits amounts for privacy
 
 ### UI/UX
-- **Bottom Navigation**: Home, Calendar, Stats, Settings tabs
-- **AMOLED Dark Theme**: Catppuccin Mocha throughout
+- **Bottom Navigation**: Home, Calendar, Insights, Settings tabs
+- **AMOLED Dark Theme**: Midnight ledger surfaces with blue, mint, amber, coral, and lilac status accents
 - **Edge-to-Edge**: Full immersive display
 - **Auto-Pay Tags**: Visual badge on auto-pay bills
 
