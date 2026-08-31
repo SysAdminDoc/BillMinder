@@ -100,7 +100,7 @@ class BillDatabaseMigrationTest {
         openRaw(6) { db ->
             db.execSQL(V6_BILLS)
             db.execSQL(V6_PAYMENTS)
-            db.execSQL(V6_PAYEES)
+            createPayees(db)
             db.execSQL(
                 "INSERT INTO bills (id, name, amount, dueDay, dueMonth, dueYear, category, " +
                     "recurrence, isAutoPay, notes, reminderTiming, secondReminderTiming, " +
@@ -145,7 +145,7 @@ class BillDatabaseMigrationTest {
         openRaw(6) { db ->
             db.execSQL(V6_BILLS)
             db.execSQL(V6_PAYMENTS)
-            db.execSQL(V6_PAYEES)
+            createPayees(db)
             db.execSQL(
                 "INSERT INTO bills (id, name, amount, dueDay, dueMonth, dueYear, category, " +
                     "recurrence, isAutoPay, notes, reminderTiming, secondReminderTiming, " +
@@ -173,7 +173,7 @@ class BillDatabaseMigrationTest {
         openRaw(6) { db ->
             db.execSQL(V6_BILLS)
             db.execSQL(V6_PAYMENTS)
-            db.execSQL(V6_PAYEES)
+            createPayees(db)
             db.execSQL(
                 "INSERT INTO bills (id, name, amount, dueDay, dueMonth, dueYear, category, " +
                     "recurrence, isAutoPay, notes, reminderTiming, secondReminderTiming, " +
@@ -206,7 +206,7 @@ class BillDatabaseMigrationTest {
             openRaw(version) { db ->
                 db.execSQL(billsDdl(version))
                 db.execSQL(paymentsDdl(version))
-                if (version >= 4) db.execSQL(V6_PAYEES)
+                if (version >= 4) createPayees(db)
                 db.execSQL(insertBill(version, id = 5, name = "Water $version", dueDay = 9))
                 db.execSQL(insertPayment(version, id = 40, billId = 5, dueDate = millisOf("2025-06-09")))
                 if (version >= 4) {
@@ -240,7 +240,7 @@ class BillDatabaseMigrationTest {
         openRaw(6) { db ->
             db.execSQL(V6_BILLS)
             db.execSQL(V6_PAYMENTS)
-            db.execSQL(V6_PAYEES)
+            createPayees(db)
             // The old scheduler anchored on the current month, so a quarterly bill's stored due
             // dates sit in months the anchored engine never emits.
             db.execSQL(v6Bill(id = 20, name = "Insurance", dueDay = 10, recurrence = "QUARTERLY", created = "2024-01-10"))
@@ -283,7 +283,7 @@ class BillDatabaseMigrationTest {
         openRaw(99) { db ->
             db.execSQL(V6_BILLS)
             db.execSQL(V6_PAYMENTS)
-            db.execSQL(V6_PAYEES)
+            createPayees(db)
             db.execSQL(
                 "INSERT INTO bills (id, name, amount, dueDay, dueMonth, dueYear, category, " +
                     "recurrence, isAutoPay, notes, reminderTiming, secondReminderTiming, " +
@@ -311,6 +311,12 @@ class BillDatabaseMigrationTest {
 
     private fun millisOf(date: String): Long =
         LocalDate.parse(date).atTime(12, 0).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+    /** The payees table exactly as MIGRATION_3_4 leaves it, index included. */
+    private fun createPayees(db: SupportSQLiteDatabase) {
+        db.execSQL(V6_PAYEES)
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_bill_payees_billId ON bill_payees(billId)")
+    }
 
     /** The bills table as it stood at [version], built from the columns each release added. */
     private fun billsDdl(version: Int): String {

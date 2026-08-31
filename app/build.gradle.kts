@@ -31,7 +31,7 @@ gradle.taskGraph.whenReady {
 
 android {
     namespace = "com.sysadmindoc.billminder"
-    compileSdk = 35
+    compileSdk = 36
 
     flavorDimensions += "distribution"
 
@@ -47,7 +47,7 @@ android {
     defaultConfig {
         applicationId = "com.sysadmindoc.billminder"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 8
         versionName = "2.4.0"
     }

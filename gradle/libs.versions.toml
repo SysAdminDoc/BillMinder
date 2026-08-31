@@ -1,5 +1,5 @@
 [versions]
-agp = "8.7.3"
+agp = "8.10.1"
 kotlin = "2.1.0"
 ksp = "2.1.0-1.0.29"
 coreKtx = "1.15.0"
@@ -19,7 +19,7 @@ playServicesWearable = "20.0.1"
 wearTiles = "1.6.2"
 wearProtoLayout = "1.4.2"
 mlKitTextRecognition = "16.0.1"
-robolectric = "4.14.1"
+robolectric = "4.16"
 androidxTestCore = "1.6.1"
 coroutines = "1.9.0"
 
