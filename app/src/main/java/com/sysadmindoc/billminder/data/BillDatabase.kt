@@ -189,6 +189,18 @@ abstract class BillDatabase : RoomDatabase() {
 
         private const val DATABASE_NAME = "billminder.db"
 
+        /**
+         * Drops the cached instance. Tests share a process, and a database held open across them
+         * outlives the connections underneath it.
+         */
+        @androidx.annotation.VisibleForTesting
+        fun closeInstance() {
+            synchronized(this) {
+                INSTANCE?.close()
+                INSTANCE = null
+            }
+        }
+
         fun getDatabase(context: Context): BillDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(

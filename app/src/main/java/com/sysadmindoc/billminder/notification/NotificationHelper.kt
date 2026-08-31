@@ -41,6 +41,12 @@ object NotificationHelper {
         nm.createNotificationChannel(overdueChannel)
     }
 
+    /** Clears every notification this app can show for one bill. */
+    fun cancelAll(context: Context, billId: Long) {
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        AlarmIds.allNotificationIds(billId).forEach(nm::cancel)
+    }
+
     fun showReminderNotification(
         context: Context,
         billId: Long,
@@ -58,7 +64,7 @@ object NotificationHelper {
             putExtra("bill_id", billId)
         }
         val pendingIntent = PendingIntent.getActivity(
-            context, billId.toInt(), intent,
+            context, AlarmIds.code(billId, AlarmSlot.OPEN_BILL), intent.apply { data = AlarmIds.uri(billId, AlarmSlot.OPEN_BILL) },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val fullScreenIntent = Intent(context, ReminderAlarmActivity::class.java).apply {
@@ -71,7 +77,7 @@ object NotificationHelper {
             putExtra("next_due_date", nextDueDate)
         }
         val fullScreenPending = PendingIntent.getActivity(
-            context, (billId + 100000).toInt(), fullScreenIntent,
+            context, AlarmIds.code(billId, AlarmSlot.FULL_SCREEN), fullScreenIntent.apply { data = AlarmIds.uri(billId, AlarmSlot.FULL_SCREEN) },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -83,7 +89,7 @@ object NotificationHelper {
             putExtra("currency", currency)
         }
         val markPaidPending = PendingIntent.getBroadcast(
-            context, (billId + 10000).toInt(), markPaidIntent,
+            context, AlarmIds.code(billId, AlarmSlot.MARK_PAID), markPaidIntent.apply { data = AlarmIds.uri(billId, AlarmSlot.MARK_PAID) },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -99,7 +105,7 @@ object NotificationHelper {
             putExtra("snooze_minutes", 60)
         }
         val snooze1hPending = PendingIntent.getBroadcast(
-            context, (billId + 30000).toInt(), snooze1hIntent,
+            context, AlarmIds.code(billId, AlarmSlot.SNOOZE_ONE_HOUR), snooze1hIntent.apply { data = AlarmIds.uri(billId, AlarmSlot.SNOOZE_ONE_HOUR) },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -115,7 +121,7 @@ object NotificationHelper {
             putExtra("snooze_minutes", 60 * 24)
         }
         val snoozeTmrwPending = PendingIntent.getBroadcast(
-            context, (billId + 40000).toInt(), snoozeTmrwIntent,
+            context, AlarmIds.code(billId, AlarmSlot.SNOOZE_TOMORROW), snoozeTmrwIntent.apply { data = AlarmIds.uri(billId, AlarmSlot.SNOOZE_TOMORROW) },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -125,7 +131,7 @@ object NotificationHelper {
             putExtra("next_due_date", nextDueDate)
         }
         val dismissedPending = PendingIntent.getBroadcast(
-            context, (billId + 90000).toInt(), dismissedIntent,
+            context, AlarmIds.code(billId, AlarmSlot.REMINDER_DISMISSED), dismissedIntent.apply { data = AlarmIds.uri(billId, AlarmSlot.REMINDER_DISMISSED) },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -162,7 +168,7 @@ object NotificationHelper {
         }
         val notification = notificationBuilder.build()
 
-        nm.notify(billId.toInt(), notification)
+        nm.notify(AlarmIds.notificationId(billId, AlarmSlot.REMINDER_NOTIFICATION), notification)
     }
 
     fun showOverdueNotification(
@@ -180,7 +186,7 @@ object NotificationHelper {
             putExtra("bill_id", billId)
         }
         val pendingIntent = PendingIntent.getActivity(
-            context, (billId + 20000).toInt(), intent,
+            context, AlarmIds.code(billId, AlarmSlot.OVERDUE_OPEN_BILL), intent.apply { data = AlarmIds.uri(billId, AlarmSlot.OVERDUE_OPEN_BILL) },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val fullScreenIntent = Intent(context, ReminderAlarmActivity::class.java).apply {
@@ -192,7 +198,7 @@ object NotificationHelper {
             putExtra("next_due_date", 0L)
         }
         val fullScreenPending = PendingIntent.getActivity(
-            context, (billId + 120000).toInt(), fullScreenIntent,
+            context, AlarmIds.code(billId, AlarmSlot.OVERDUE_FULL_SCREEN), fullScreenIntent.apply { data = AlarmIds.uri(billId, AlarmSlot.OVERDUE_FULL_SCREEN) },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -202,7 +208,7 @@ object NotificationHelper {
             putExtra("amount", amount)
         }
         val markPaidPending = PendingIntent.getBroadcast(
-            context, (billId + 10000).toInt(), markPaidIntent,
+            context, AlarmIds.code(billId, AlarmSlot.MARK_PAID), markPaidIntent.apply { data = AlarmIds.uri(billId, AlarmSlot.MARK_PAID) },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -220,6 +226,6 @@ object NotificationHelper {
         }
         val notification = notificationBuilder.build()
 
-        nm.notify((billId + 20000).toInt(), notification)
+        nm.notify(AlarmIds.notificationId(billId, AlarmSlot.OVERDUE_NOTIFICATION), notification)
     }
 }

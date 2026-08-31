@@ -112,9 +112,7 @@ class ReminderAlarmActivity : FragmentActivity() {
     }
 
     private fun cancelNotifications() {
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.cancel(billId.toInt())
-        notificationManager.cancel((billId + 20000).toInt())
+        NotificationHelper.cancelAll(this, billId)
     }
 }
 

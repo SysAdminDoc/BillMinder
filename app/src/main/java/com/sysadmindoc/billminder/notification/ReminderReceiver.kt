@@ -1,7 +1,7 @@
 package com.sysadmindoc.billminder.notification
 
 import android.app.AlarmManager
-import android.app.PendingIntent
+
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -16,20 +16,21 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 
 class ReminderReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        val db = BillDatabase.getDatabase(context)
-        val repo = BillRepository(db)
+        val repo = BillRepository(BillDatabase.getDatabase(context))
 
         when (intent.action) {
-            "BILL_REMINDER" -> handleReminder(context, intent, repo)
+            ReminderScheduler.ACTION_REMINDER -> handleReminder(context, intent, repo)
+            ReminderScheduler.ACTION_OVERDUE -> handleOverdue(context, intent, repo)
             "MARK_PAID" -> handleMarkPaid(context, intent, repo)
             "SNOOZE" -> handleSnooze(context, intent)
-            "SNOOZED_REMINDER" -> handleSnoozedReminder(context, intent)
+            ReminderScheduler.ACTION_SNOOZED -> handleSnoozedReminder(context, intent)
             "REMINDER_DISMISSED" -> handleReminderDismissed(context, intent, repo)
-            "CASCADE_REMINDER" -> handleCascadeReminder(context, intent, repo)
+            ReminderScheduler.ACTION_CASCADE -> handleCascadeReminder(context, intent, repo)
             Intent.ACTION_BOOT_COMPLETED,
             Intent.ACTION_MY_PACKAGE_REPLACED,
             Intent.ACTION_TIME_CHANGED,
@@ -53,15 +54,13 @@ class ReminderReceiver : BroadcastReceiver() {
         }
     }
 
+    private fun billIdOf(intent: Intent): Long = intent.getLongExtra(ReminderScheduler.EXTRA_BILL_ID, -1L)
+
     private fun handleReminder(context: Context, intent: Intent, repo: BillRepository) {
-        val requestCode = intent.getLongExtra("request_code", -1)
-        val daysBeforeDue = intent.getIntExtra("days_before_due", 1)
-        val cycleKey = intent.getStringExtra("cycle_key").orEmpty()
-        val billId = if (requestCode >= ReminderScheduler.SECOND_REMINDER_OFFSET) {
-            requestCode - ReminderScheduler.SECOND_REMINDER_OFFSET
-        } else {
-            requestCode
-        }
+        val billId = billIdOf(intent)
+        if (billId == -1L) return
+        val daysBeforeDue = intent.getIntExtra(ReminderScheduler.EXTRA_DAYS_BEFORE_DUE, 1)
+        val cycleKey = intent.getStringExtra(ReminderScheduler.EXTRA_CYCLE_KEY).orEmpty()
 
         runAsync {
             val bill = repo.getBillById(billId) ?: return@runAsync
@@ -69,7 +68,6 @@ class ReminderReceiver : BroadcastReceiver() {
                 ?: repo.currentCycleFor(bill)
                 ?: return@runAsync
             val key = CycleEngine.cycleKey(cycleDate)
-            val dueAt = CycleEngine.dueInstant(cycleDate)
 
             if (repo.getPaymentForCycle(bill.id, key) == null) {
                 NotificationHelper.showReminderNotification(
@@ -79,7 +77,7 @@ class ReminderReceiver : BroadcastReceiver() {
                     amount = bill.amount,
                     daysUntilDue = daysBeforeDue,
                     isAutoPay = bill.isAutoPay,
-                    nextDueDate = dueAt,
+                    nextDueDate = CycleEngine.dueInstant(cycleDate),
                     currency = bill.currency
                 )
             }
@@ -88,8 +86,32 @@ class ReminderReceiver : BroadcastReceiver() {
         }
     }
 
+    private fun handleOverdue(context: Context, intent: Intent, repo: BillRepository) {
+        val billId = billIdOf(intent)
+        if (billId == -1L) return
+        val cycleKey = intent.getStringExtra(ReminderScheduler.EXTRA_CYCLE_KEY).orEmpty()
+
+        runAsync {
+            val bill = repo.getBillById(billId) ?: return@runAsync
+            val cycleDate = CycleEngine.parseCycleKey(cycleKey) ?: return@runAsync
+            if (repo.getPaymentForCycle(billId, cycleKey) != null) return@runAsync
+
+            val daysPastDue = ChronoUnit.DAYS.between(cycleDate, LocalDate.now()).toInt()
+            if (daysPastDue <= 0) return@runAsync
+            NotificationHelper.showOverdueNotification(
+                context = context,
+                billId = billId,
+                billName = bill.name,
+                amount = bill.amount,
+                daysPastDue = daysPastDue,
+                currency = bill.currency
+            )
+            ReminderScheduler.scheduleReminder(context, bill)
+        }
+    }
+
     private fun handleMarkPaid(context: Context, intent: Intent, repo: BillRepository) {
-        val billId = intent.getLongExtra("bill_id", -1)
+        val billId = billIdOf(intent)
         val amount = intent.getDoubleExtra("amount", 0.0)
         if (billId == -1L) return
 
@@ -109,17 +131,16 @@ class ReminderReceiver : BroadcastReceiver() {
                     cycleKey = CycleEngine.cycleKey(cycle)
                 )
             )
-            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-            nm.cancel(billId.toInt())
-            nm.cancel((billId + 20000).toInt())
+            NotificationHelper.cancelAll(context, billId)
             cancelCascade(context, billId)
+            ReminderScheduler.scheduleReminder(context, bill)
             WearSync.sync(context)
             WidgetUpdater.updateAll(context)
         }
     }
 
     private fun handleSnooze(context: Context, intent: Intent) {
-        val billId = intent.getLongExtra("bill_id", -1)
+        val billId = billIdOf(intent)
         val billName = intent.getStringExtra("bill_name") ?: return
         val amount = intent.getDoubleExtra("amount", 0.0)
         val daysUntilDue = intent.getIntExtra("days_until_due", 0)
@@ -127,32 +148,31 @@ class ReminderReceiver : BroadcastReceiver() {
         val currency = intent.getStringExtra("currency") ?: "USD"
         val snoozeMinutes = intent.getIntExtra("snooze_minutes", 60)
 
-        // Dismiss current notification
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-        nm.cancel(billId.toInt())
+        NotificationHelper.cancelAll(context, billId)
 
-        // Schedule snooze alarm
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val snoozeIntent = Intent(context, ReminderReceiver::class.java).apply {
-            action = "SNOOZED_REMINDER"
-            putExtra("bill_id", billId)
+        val snoozeIntent = ReminderScheduler.alarmIntent(
+            context, billId, AlarmSlot.SNOOZED_REMINDER, ReminderScheduler.ACTION_SNOOZED
+        ).apply {
             putExtra("bill_name", billName)
             putExtra("amount", amount)
             putExtra("currency", currency)
             putExtra("days_until_due", daysUntilDue)
             putExtra("is_auto_pay", isAutoPay)
         }
-        val pendingIntent = PendingIntent.getBroadcast(
-            context, (billId + ReminderScheduler.SNOOZE_OFFSET).toInt(), snoozeIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        val pendingIntent = ReminderScheduler.pendingIntent(
+            context, billId, AlarmSlot.SNOOZED_REMINDER, ReminderScheduler.ACTION_SNOOZED, snoozeIntent
         )
 
-        val triggerAt = System.currentTimeMillis() + (snoozeMinutes * 60 * 1000L)
-        alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+        alarmManager.setAndAllowWhileIdle(
+            AlarmManager.RTC_WAKEUP,
+            ReminderScheduler.nowPlusMinutes(snoozeMinutes),
+            pendingIntent
+        )
     }
 
     private fun handleSnoozedReminder(context: Context, intent: Intent) {
-        val billId = intent.getLongExtra("bill_id", -1)
+        val billId = billIdOf(intent)
         val billName = intent.getStringExtra("bill_name") ?: return
         val amount = intent.getDoubleExtra("amount", 0.0)
         val daysUntilDue = intent.getIntExtra("days_until_due", 0)
@@ -171,7 +191,7 @@ class ReminderReceiver : BroadcastReceiver() {
     }
 
     private fun handleReminderDismissed(context: Context, intent: Intent, repo: BillRepository) {
-        val billId = intent.getLongExtra("bill_id", -1)
+        val billId = billIdOf(intent)
         if (billId == -1L) return
 
         runAsync {
@@ -182,57 +202,36 @@ class ReminderReceiver : BroadcastReceiver() {
                 scheduleCascade(
                     context = context,
                     billId = bill.id,
-                    billName = bill.name,
-                    amount = bill.amount,
-                    daysUntilDue = java.time.temporal.ChronoUnit.DAYS
-                        .between(LocalDate.now(), cycle).toInt(),
-                    isAutoPay = bill.isAutoPay,
-                    cycleKey = key,
-                    currency = bill.currency
+                    cycleKey = key
                 )
             }
         }
     }
 
-    private fun scheduleCascade(
-        context: Context,
-        billId: Long,
-        billName: String,
-        amount: Double,
-        daysUntilDue: Int,
-        isAutoPay: Boolean,
-        cycleKey: String,
-        currency: String
-    ) {
+    private fun scheduleCascade(context: Context, billId: Long, cycleKey: String) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val now = System.currentTimeMillis()
 
-        fun cascade(offset: Long, level: Int, delayMillis: Long) {
-            val cascadeIntent = Intent(context, ReminderReceiver::class.java).apply {
-                action = "CASCADE_REMINDER"
-                putExtra("bill_id", billId)
-                putExtra("bill_name", billName)
-                putExtra("amount", amount)
-                putExtra("currency", currency)
-                putExtra("days_until_due", daysUntilDue)
-                putExtra("is_auto_pay", isAutoPay)
-                putExtra("cycle_key", cycleKey)
+        fun cascade(slot: AlarmSlot, level: Int, delayMillis: Long) {
+            val intent = ReminderScheduler.alarmIntent(
+                context, billId, slot, ReminderScheduler.ACTION_CASCADE
+            ).apply {
+                putExtra(ReminderScheduler.EXTRA_CYCLE_KEY, cycleKey)
                 putExtra("cascade_level", level)
             }
-            val pending = PendingIntent.getBroadcast(
-                context, (billId + offset).toInt(), cascadeIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            val pending = ReminderScheduler.pendingIntent(
+                context, billId, slot, ReminderScheduler.ACTION_CASCADE, intent
             )
             alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, now + delayMillis, pending)
         }
 
-        cascade(ReminderScheduler.CASCADE_4H_OFFSET, 1, 4 * 60 * 60 * 1000L)
-        cascade(ReminderScheduler.CASCADE_24H_OFFSET, 2, 24 * 60 * 60 * 1000L)
+        cascade(AlarmSlot.CASCADE_FOLLOW_UP, 1, 4 * 60 * 60 * 1000L)
+        cascade(AlarmSlot.CASCADE_URGENT, 2, 24 * 60 * 60 * 1000L)
     }
 
     private fun handleCascadeReminder(context: Context, intent: Intent, repo: BillRepository) {
-        val billId = intent.getLongExtra("bill_id", -1)
-        val cycleKey = intent.getStringExtra("cycle_key").orEmpty()
+        val billId = billIdOf(intent)
+        val cycleKey = intent.getStringExtra(ReminderScheduler.EXTRA_CYCLE_KEY).orEmpty()
         val cascadeLevel = intent.getIntExtra("cascade_level", 1)
         if (billId == -1L) return
 
@@ -240,12 +239,9 @@ class ReminderReceiver : BroadcastReceiver() {
             val bill = repo.getBillById(billId) ?: return@runAsync
             val currentCycle = repo.currentCycleFor(bill) ?: return@runAsync
             if (CycleEngine.cycleKey(currentCycle) != cycleKey) return@runAsync
-
-            // Already paid: nothing to escalate.
             if (repo.getPaymentForCycle(billId, cycleKey) != null) return@runAsync
 
-            val daysUntilDue = java.time.temporal.ChronoUnit.DAYS
-                .between(LocalDate.now(), currentCycle).toInt()
+            val daysUntilDue = ChronoUnit.DAYS.between(LocalDate.now(), currentCycle).toInt()
 
             if (daysUntilDue < 0) {
                 NotificationHelper.showOverdueNotification(
@@ -277,17 +273,16 @@ class ReminderReceiver : BroadcastReceiver() {
 
     private fun cancelCascade(context: Context, billId: Long) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        listOf(
-            (billId + ReminderScheduler.CASCADE_4H_OFFSET).toInt(),
-            (billId + ReminderScheduler.CASCADE_24H_OFFSET).toInt()
-        ).forEach { requestCode ->
-            val intent = Intent(context, ReminderReceiver::class.java).apply { action = "CASCADE_REMINDER" }
-            PendingIntent.getBroadcast(
+        listOf(AlarmSlot.CASCADE_FOLLOW_UP, AlarmSlot.CASCADE_URGENT).forEach { slot ->
+            android.app.PendingIntent.getBroadcast(
                 context,
-                requestCode,
-                intent,
-                PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
-            )?.let(alarmManager::cancel)
+                AlarmIds.code(billId, slot),
+                ReminderScheduler.alarmIntent(context, billId, slot, ReminderScheduler.ACTION_CASCADE),
+                android.app.PendingIntent.FLAG_NO_CREATE or android.app.PendingIntent.FLAG_IMMUTABLE
+            )?.let { pending ->
+                alarmManager.cancel(pending)
+                pending.cancel()
+            }
         }
     }
 
@@ -297,3 +292,4 @@ class ReminderReceiver : BroadcastReceiver() {
         }
     }
 }
+

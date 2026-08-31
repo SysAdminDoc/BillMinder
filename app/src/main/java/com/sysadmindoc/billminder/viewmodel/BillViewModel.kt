@@ -8,6 +8,7 @@ import com.sysadmindoc.billminder.data.*
 import com.sysadmindoc.billminder.domain.BillCycles
 import com.sysadmindoc.billminder.domain.CycleEngine
 import com.sysadmindoc.billminder.notification.ReminderScheduler
+import com.sysadmindoc.billminder.notification.NotificationHelper
 import com.sysadmindoc.billminder.notification.ReminderPrefs
 import com.sysadmindoc.billminder.security.EncryptedAttachment
 import com.sysadmindoc.billminder.security.EncryptedAttachmentStore
@@ -484,9 +485,8 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
             if (inserted <= 0L && attachment != null) {
                 EncryptedAttachmentStore.delete(getApplication(), attachment.fileName)
             }
-            val nm = getApplication<Application>().getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-            nm.cancel(bill.id.toInt())
-            nm.cancel((bill.id + 20000).toInt())
+            NotificationHelper.cancelAll(getApplication(), bill.id)
+            ReminderScheduler.scheduleReminder(getApplication(), bill)
             refreshExternalSurfaces()
             loadChartData()
         }
