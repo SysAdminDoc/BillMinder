@@ -92,27 +92,27 @@ fun BillCard(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 76.dp)
+            .heightIn(min = 80.dp)
             .background(CatSurfaceRaised)
             .combinedClickable(onClick = onTap)
-            .padding(horizontal = 12.dp, vertical = 7.dp),
+            .padding(start = 10.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(
-            modifier = Modifier.width(40.dp),
+            modifier = Modifier.width(44.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
                 monthFormat.format(dueDate).uppercase(Locale.getDefault()),
                 color = stateColor,
-                fontSize = 10.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold
             )
             Text(
                 dayFormat.format(dueDate),
                 color = stateColor,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.SemiBold
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold
             )
         }
 
@@ -121,9 +121,9 @@ fun BillCard(
             icon = getCategoryIcon(bill.category),
             contentDescription = bill.category.label,
             tint = billColor,
-            modifier = Modifier.size(40.dp)
+            modifier = Modifier.size(42.dp)
         )
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(10.dp))
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -162,7 +162,7 @@ fun BillCard(
             )
         }
 
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(6.dp))
         Column(horizontalAlignment = Alignment.End) {
             Text(
                 CurrencyFormatter.format(bill.amount, bill.currency),
@@ -180,7 +180,7 @@ fun BillCard(
         }
         Box(
             modifier = Modifier
-                .size(48.dp)
+                .size(44.dp)
                 .combinedClickable(
                     onClick = onMarkPaid,
                     onLongClick = onLongPressPaid
@@ -191,7 +191,7 @@ fun BillCard(
                 if (billWithStatus.isPaidThisCycle) Icons.Filled.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
                 if (billWithStatus.isPaidThisCycle) "Unmark paid" else "Mark paid",
                 tint = if (billWithStatus.isPaidThisCycle) CatGreen else CatBlue,
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier.size(26.dp)
             )
         }
     }

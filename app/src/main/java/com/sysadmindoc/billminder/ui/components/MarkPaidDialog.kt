@@ -99,6 +99,7 @@ fun MarkPaidDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = CatBase,
+        shape = RoundedCornerShape(12.dp),
         titleContentColor = CatText,
         textContentColor = CatText,
         title = { Text("Mark ${bill.name} as Paid") },
@@ -158,7 +159,8 @@ fun MarkPaidDialog(
                 OutlinedButton(
                     onClick = { attachmentPicker.launch("*/*") },
                     enabled = !isImporting,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp)
                 ) {
                     Icon(Icons.Filled.AttachFile, contentDescription = null)
                     Spacer(Modifier.width(8.dp))

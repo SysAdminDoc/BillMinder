@@ -31,7 +31,9 @@ import com.sysadmindoc.billminder.data.CurrencyFormatter
 import com.sysadmindoc.billminder.data.Recurrence
 import com.sysadmindoc.billminder.ui.components.GroupDivider
 import com.sysadmindoc.billminder.ui.components.GroupedSurface
+import com.sysadmindoc.billminder.ui.components.IconWell
 import com.sysadmindoc.billminder.ui.components.SectionHeading
+import com.sysadmindoc.billminder.ui.components.getCategoryIcon
 import com.sysadmindoc.billminder.ui.theme.*
 import com.sysadmindoc.billminder.viewmodel.BillViewModel
 import com.sysadmindoc.billminder.viewmodel.BillWithStatus
@@ -51,6 +53,7 @@ private val chartColors = listOf(
 fun StatsScreen(viewModel: BillViewModel) {
     val chartData by viewModel.chartData.collectAsState()
     val summary by viewModel.monthlySummary.collectAsState()
+    val billsWithStatus by viewModel.billsWithStatus.collectAsState()
     val context = LocalContext.current
 
     LaunchedEffect(Unit) { viewModel.loadChartData() }
@@ -61,7 +64,7 @@ fun StatsScreen(viewModel: BillViewModel) {
             .background(CatCrust)
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Spacer(Modifier.height(4.dp))
 
@@ -79,7 +82,7 @@ fun StatsScreen(viewModel: BillViewModel) {
             )
         }
 
-        GroupedSurface(contentPadding = PaddingValues(18.dp)) {
+        GroupedSurface(contentPadding = PaddingValues(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -100,10 +103,10 @@ fun StatsScreen(viewModel: BillViewModel) {
                         color = CatSubtext0
                     )
                 }
-                Box(Modifier.width(1.dp).height(86.dp).background(CatDivider))
+                Box(Modifier.width(1.dp).height(80.dp).background(CatDivider))
                 Spacer(Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(0.85f)) {
-                    Text("Annual projection", style = MaterialTheme.typography.labelLarge, color = CatSubtext0)
+                    Text("Annual total", style = MaterialTheme.typography.labelLarge, color = CatSubtext0)
                     Spacer(Modifier.height(3.dp))
                     Text(
                         CurrencyFormatter.format(chartData.yearlyProjection, chartData.currency),
@@ -111,7 +114,11 @@ fun StatsScreen(viewModel: BillViewModel) {
                         fontWeight = FontWeight.Bold,
                         color = CatBlue
                     )
-                    Text("per year", style = MaterialTheme.typography.bodyMedium, color = CatSubtext0)
+                    Text(
+                        "Avg ${CurrencyFormatter.format(chartData.yearlyProjection / 12.0, chartData.currency)} / month",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = CatSubtext0
+                    )
                 }
             }
         }
@@ -119,17 +126,18 @@ fun StatsScreen(viewModel: BillViewModel) {
         // Forecast panel
         if (chartData.forecast.next90Bills > 0) {
             Column {
-                SectionHeading("Forecast", color = CatText)
-                Spacer(Modifier.height(8.dp))
-                GroupedSurface(contentPadding = PaddingValues(16.dp)) {
-                    Spacer(Modifier.height(12.dp))
+                SectionHeading("Forecast")
+                Spacer(Modifier.height(6.dp))
+                GroupedSurface(contentPadding = PaddingValues(14.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        ForecastColumn("30 days", chartData.forecast.next30Days, chartData.forecast.next30Bills, CatGreen, chartData.currency)
-                        ForecastColumn("60 days", chartData.forecast.next60Days, chartData.forecast.next60Bills, CatYellow, chartData.currency)
-                        ForecastColumn("90 days", chartData.forecast.next90Days, chartData.forecast.next90Bills, CatPeach, chartData.currency)
+                        ForecastColumn("30 days", chartData.forecast.next30Days, chartData.forecast.next30Bills, CatGreen, chartData.currency, Modifier.weight(1f))
+                        Box(Modifier.width(1.dp).height(58.dp).background(CatDivider))
+                        ForecastColumn("60 days", chartData.forecast.next60Days, chartData.forecast.next60Bills, CatYellow, chartData.currency, Modifier.weight(1f))
+                        Box(Modifier.width(1.dp).height(58.dp).background(CatDivider))
+                        ForecastColumn("90 days", chartData.forecast.next90Days, chartData.forecast.next90Bills, CatPeach, chartData.currency, Modifier.weight(1f))
                     }
                 }
             }
@@ -138,9 +146,9 @@ fun StatsScreen(viewModel: BillViewModel) {
         // Category pie chart
         if (chartData.categoryBreakdown.isNotEmpty()) {
             Column {
-                SectionHeading("Spending by category", color = CatText)
-                Spacer(Modifier.height(8.dp))
-                GroupedSurface(contentPadding = PaddingValues(14.dp)) {
+                SectionHeading("Spending by category")
+                Spacer(Modifier.height(6.dp))
+                GroupedSurface(contentPadding = PaddingValues(12.dp)) {
                     val total = chartData.categoryBreakdown.sumOf { it.second }.coerceAtLeast(1.0)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -148,13 +156,13 @@ fun StatsScreen(viewModel: BillViewModel) {
                     ) {
                         PieChart(
                             chartData.categoryBreakdown,
-                            modifier = Modifier.weight(0.9f).height(150.dp)
+                            modifier = Modifier.weight(0.9f).height(132.dp)
                         )
                         Spacer(Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1.1f)) {
                             chartData.categoryBreakdown.take(4).forEachIndexed { index, (category, amount) ->
                                 Row(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Box(
@@ -191,13 +199,19 @@ fun StatsScreen(viewModel: BillViewModel) {
         // Monthly trend
         if (chartData.monthlyTrend.any { it.second > 0 }) {
             Column {
-                SectionHeading("6-month trend", color = CatText)
-                Spacer(Modifier.height(8.dp))
-                GroupedSurface(contentPadding = PaddingValues(14.dp)) {
-                    TrendChart(chartData.monthlyTrend, chartData.currency, modifier = Modifier.fillMaxWidth().height(150.dp))
+                SectionHeading("6-month trend")
+                Spacer(Modifier.height(6.dp))
+                GroupedSurface(contentPadding = PaddingValues(12.dp)) {
+                    TrendChart(chartData.monthlyTrend, chartData.currency, modifier = Modifier.fillMaxWidth().height(132.dp))
                 }
             }
         }
+
+        TopBillsPanel(
+            bills = billsWithStatus,
+            currency = chartData.currency,
+            convert = viewModel::convertToDisplay
+        )
 
         // Twelve-month paid versus outstanding plan
         if (chartData.cashFlow.any { it.paid > 0 || it.outstanding > 0 }) {
@@ -491,7 +505,7 @@ private fun PieChart(data: List<Pair<BillCategory, Double>>, modifier: Modifier 
         val holeSize = diameter * 0.55f
         val holeOffset = Offset((size.width - holeSize) / 2, (size.height - holeSize) / 2)
         drawOval(
-            color = Color(0xFF1E1E2E),
+            color = CatSurfaceRaised,
             topLeft = holeOffset,
             size = Size(holeSize, holeSize)
         )
@@ -525,7 +539,7 @@ private fun TrendChart(data: List<Pair<String, Double>>, currency: String, modif
         for (i in 0..3) {
             val y = padTop + chartHeight * (1 - i / 3f)
             drawLine(
-                color = Color(0xFF313244),
+                color = CatDivider,
                 start = Offset(padLeft, y),
                 end = Offset(size.width - 20f, y),
                 strokeWidth = 1f
@@ -659,8 +673,15 @@ private fun CashFlowChart(
 }
 
 @Composable
-private fun ForecastColumn(label: String, amount: Double, count: Int, color: Color, currency: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+private fun ForecastColumn(
+    label: String,
+    amount: Double,
+    count: Int,
+    color: Color,
+    currency: String,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             label,
             style = MaterialTheme.typography.labelMedium,
@@ -680,4 +701,67 @@ private fun ForecastColumn(label: String, amount: Double, count: Int, color: Col
             color = CatOverlay0
         )
     }
+}
+
+@Composable
+private fun TopBillsPanel(
+    bills: List<BillWithStatus>,
+    currency: String,
+    convert: (Double, String) -> Double
+) {
+    if (bills.isEmpty()) return
+    val largest = bills.maxByOrNull { convert(it.bill.amount, it.bill.currency) } ?: return
+    val mostFrequent = bills.maxByOrNull { recurrenceCount(it.bill.recurrence) } ?: largest
+
+    Column {
+        SectionHeading("Top bills")
+        Spacer(Modifier.height(6.dp))
+        GroupedSurface(contentPadding = PaddingValues(horizontal = 14.dp)) {
+            TopBillRow(
+                status = largest,
+                eyebrow = "Largest bill",
+                value = CurrencyFormatter.format(convert(largest.bill.amount, largest.bill.currency), currency),
+                supporting = largest.bill.category.label
+            )
+            GroupDivider()
+            TopBillRow(
+                status = mostFrequent,
+                eyebrow = "Most frequent",
+                value = mostFrequent.bill.recurrence.label,
+                supporting = "${recurrenceCount(mostFrequent.bill.recurrence)} payments / year"
+            )
+        }
+    }
+}
+
+@Composable
+private fun TopBillRow(status: BillWithStatus, eyebrow: String, value: String, supporting: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().heightIn(min = 76.dp).padding(vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconWell(
+            icon = getCategoryIcon(status.bill.category),
+            contentDescription = null,
+            tint = storedBillColor(status.bill.color)
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(eyebrow, color = CatSubtext0, style = MaterialTheme.typography.labelMedium)
+            Text(status.bill.name, color = CatText, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+        }
+        Column(horizontalAlignment = Alignment.End) {
+            Text(value, color = CatText, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(supporting, color = CatSubtext0, style = MaterialTheme.typography.labelMedium)
+        }
+    }
+}
+
+private fun recurrenceCount(recurrence: Recurrence): Int = when (recurrence) {
+    Recurrence.WEEKLY -> 52
+    Recurrence.BIWEEKLY -> 26
+    Recurrence.MONTHLY -> 12
+    Recurrence.QUARTERLY -> 4
+    Recurrence.YEARLY -> 1
+    Recurrence.ONE_TIME -> 0
 }

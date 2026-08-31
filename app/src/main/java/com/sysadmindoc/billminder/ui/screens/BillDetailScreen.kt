@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -231,8 +232,9 @@ fun BillDetailScreen(
                     Spacer(Modifier.height(24.dp))
                     Text(
                         CurrencyFormatter.format(currentBill.amount, currentBill.currency),
-                        fontSize = 38.sp,
+                        fontSize = 42.sp,
                         fontWeight = FontWeight.Bold,
+                        letterSpacing = (-0.9).sp,
                         color = CatText
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -308,7 +310,7 @@ fun BillDetailScreen(
                 SectionHeading("Details")
                 Spacer(Modifier.height(8.dp))
                 GroupedSurface {
-                    DetailRow("Due date", dateFormat.format(Date(nextDue)))
+                    DetailRow("Due date", dateFormat.format(Date(nextDue)), Icons.Filled.CalendarMonth)
                     holidayNote?.let {
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
@@ -320,31 +322,38 @@ fun BillDetailScreen(
                         }
                     }
                     GroupDivider()
-                    DetailRow("Frequency", currentBill.recurrence.label)
+                    DetailRow("Frequency", currentBill.recurrence.label, Icons.Filled.Repeat)
                     GroupDivider()
-                    DetailRow("Reminder", currentBill.reminderTiming.label)
+                    DetailRow("Category", currentBill.category.label, Icons.Filled.Category)
+                    GroupDivider()
+                    DetailRow("Reminder", currentBill.reminderTiming.label, Icons.Filled.Notifications)
                     currentBill.secondReminderTiming?.let {
                         GroupDivider()
-                        DetailRow("Second reminder", it.label)
+                        DetailRow("Second reminder", it.label, Icons.Filled.NotificationAdd)
                     }
                     if (currentBill.isVariableAmount && currentBill.amountMin != null && currentBill.amountMax != null) {
                         GroupDivider()
                         DetailRow(
                             "Amount range",
-                            "${CurrencyFormatter.format(currentBill.amountMin, currentBill.currency)} to ${CurrencyFormatter.format(currentBill.amountMax, currentBill.currency)}"
+                            "${CurrencyFormatter.format(currentBill.amountMin, currentBill.currency)} to ${CurrencyFormatter.format(currentBill.amountMax, currentBill.currency)}",
+                            Icons.Filled.Tune
                         )
                     }
                     GroupDivider()
-                    DetailRow("Auto-pay", if (currentBill.isAutoPay) "On" else "Off")
+                    DetailRow("Auto-pay", if (currentBill.isAutoPay) "On" else "Off", Icons.Filled.CreditCard)
                     GroupDivider()
-                    DetailRow("Reminders", if (currentBill.isEnabled) "On" else "Off")
+                    DetailRow("Reminders", if (currentBill.isEnabled) "On" else "Off", Icons.Filled.NotificationsActive)
                     if (payees.isNotEmpty()) {
                         GroupDivider()
-                        DetailRow("Split", payees.joinToString { "${it.name} ${"%.0f".format(it.sharePercent)}%" })
+                        DetailRow("Split", payees.joinToString { "${it.name} ${"%.0f".format(it.sharePercent)}%" }, Icons.Filled.Groups)
                     }
                     if (currentBill.tags.isNotBlank()) {
                         GroupDivider()
-                        DetailRow("Tags", currentBill.tags)
+                        DetailRow("Tags", currentBill.tags, Icons.AutoMirrored.Filled.Label)
+                    }
+                    if (currentBill.paymentUrl.isNotBlank()) {
+                        GroupDivider()
+                        DetailRow("Website", currentBill.paymentUrl, Icons.Filled.Language)
                     }
                     if (currentBill.notes.isNotBlank()) {
                         GroupDivider()
@@ -458,14 +467,22 @@ private fun DetailAction(
 }
 
 @Composable
-private fun DetailRow(label: String, value: String) {
+private fun DetailRow(
+    label: String,
+    value: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null
+) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
+        icon?.let {
+            Icon(it, contentDescription = null, tint = CatBlue, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(10.dp))
+        }
         Text(label, color = CatSubtext0, style = MaterialTheme.typography.bodyMedium)
-        Spacer(Modifier.width(20.dp))
+        Spacer(Modifier.width(16.dp))
         Text(
             value,
             color = CatText,

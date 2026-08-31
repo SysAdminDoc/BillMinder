@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -75,7 +76,8 @@ import java.util.Locale
 fun CalendarScreen(
     viewModel: BillViewModel,
     onNavigateBack: () -> Unit,
-    onBillTap: (Long) -> Unit
+    onBillTap: (Long) -> Unit,
+    onAddBill: () -> Unit
 ) {
     val billsWithStatus by viewModel.billsWithStatus.collectAsState()
     val summary by viewModel.monthlySummary.collectAsState()
@@ -91,7 +93,7 @@ fun CalendarScreen(
         set(Calendar.DAY_OF_MONTH, 1)
     }
     val daysInMonth = monthCalendar.getActualMaximum(Calendar.DAY_OF_MONTH)
-    val firstDayOfWeek = monthCalendar.get(Calendar.DAY_OF_WEEK) - 1
+    val firstDayOfWeek = (monthCalendar.get(Calendar.DAY_OF_WEEK) + 5) % 7
     val monthFormat = remember { SimpleDateFormat("MMMM yyyy", Locale.getDefault()) }
     val selectedDateFormat = remember { SimpleDateFormat("EEEE, MMMM d", Locale.getDefault()) }
 
@@ -134,6 +136,9 @@ fun CalendarScreen(
                         selectedDay = today.get(Calendar.DAY_OF_MONTH)
                     }) {
                         Text("Today", color = CatBlue)
+                    }
+                    IconButton(onClick = onAddBill) {
+                        Icon(Icons.Filled.Add, "Add bill", tint = CatBlue)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = CatCrust),
@@ -189,7 +194,7 @@ fun CalendarScreen(
             item {
                 Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
                     Row(modifier = Modifier.fillMaxWidth()) {
-                        listOf("S", "M", "T", "W", "T", "F", "S").forEach { label ->
+                        listOf("M", "T", "W", "T", "F", "S", "S").forEach { label ->
                             Text(
                                 label,
                                 modifier = Modifier.weight(1f).padding(vertical = 8.dp),
@@ -225,27 +230,37 @@ fun CalendarScreen(
                             }
                         }
                     }
+                    Spacer(Modifier.height(8.dp))
+                    CalendarLegend()
                 }
             }
 
             item {
-                Column {
-                    Text(
-                        selectedDateFormat.format(selectedCalendar.time),
-                        color = CatText,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(Modifier.height(3.dp))
-                    Text(
-                        if (selectedBills.isEmpty()) {
-                            "No bills scheduled"
-                        } else {
-                            "${selectedBills.size} bill${if (selectedBills.size == 1) "" else "s"} · ${CurrencyFormatter.format(selectedTotal, displayCurrency)}"
-                        },
-                        color = CatSubtext0,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            selectedDateFormat.format(selectedCalendar.time),
+                            color = CatText,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            if (selectedBills.isEmpty()) {
+                                "No bills scheduled"
+                            } else {
+                                "${selectedBills.size} bill${if (selectedBills.size == 1) "" else "s"} · ${CurrencyFormatter.format(selectedTotal, displayCurrency)}"
+                            },
+                            color = CatSubtext0,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                    IconButton(onClick = onAddBill) {
+                        Icon(Icons.Filled.Add, "Add bill", tint = CatBlue)
+                    }
                 }
             }
 
@@ -272,6 +287,15 @@ fun CalendarScreen(
                 }
             }
 
+            item {
+                CalendarMonthSummary(
+                    total = summary.totalDue,
+                    paid = summary.totalPaid,
+                    remaining = summary.remaining,
+                    currency = summary.currency
+                )
+            }
+
             item { Spacer(Modifier.height(12.dp)) }
         }
     }
@@ -292,8 +316,8 @@ private fun CalendarDay(
             .aspectRatio(1f)
             .padding(2.dp)
             .clip(shape)
-            .background(if (isSelected) CatBlue.copy(alpha = 0.25f) else Color.Transparent)
-            .then(if (isToday) Modifier.border(BorderStroke(1.dp, CatBlue), shape) else Modifier)
+            .background(if (isSelected) CatBlue.copy(alpha = 0.08f) else Color.Transparent)
+            .then(if (isSelected || isToday) Modifier.border(BorderStroke(1.dp, CatBlue), shape) else Modifier)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -314,6 +338,7 @@ private fun CalendarDay(
                         val markerColor = when {
                             status.isPaidThisCycle -> CatGreen
                             status.isOverdue -> CatRed
+                            status.daysUntilDue <= 3 -> com.sysadmindoc.billminder.ui.theme.CatYellow
                             else -> storedBillColor(status.bill.color)
                         }
                         Box(Modifier.size(5.dp).clip(CircleShape).background(markerColor))
@@ -326,8 +351,21 @@ private fun CalendarDay(
 
 @Composable
 private fun CalendarBillRow(status: BillWithStatus, onClick: () -> Unit) {
+    val stateLabel = when {
+        status.isPaidThisCycle -> "Paid"
+        status.isOverdue -> "${-status.daysUntilDue} days overdue"
+        status.daysUntilDue == 0 -> "Due today"
+        status.daysUntilDue == 1 -> "Due tomorrow"
+        else -> "Upcoming"
+    }
+    val stateColor = when {
+        status.isPaidThisCycle -> CatGreen
+        status.isOverdue -> CatRed
+        status.daysUntilDue <= 1 -> com.sysadmindoc.billminder.ui.theme.CatYellow
+        else -> CatBlue
+    }
     Row(
-        modifier = Modifier.fillMaxWidth().height(84.dp).clickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth().height(82.dp).clickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconWell(
@@ -344,9 +382,7 @@ private fun CalendarBillRow(status: BillWithStatus, onClick: () -> Unit) {
                 fontWeight = FontWeight.SemiBold
             )
             Text(status.bill.category.label, color = CatSubtext0, style = MaterialTheme.typography.bodySmall)
-            if (status.bill.isAutoPay) {
-                Text("Auto-pay", color = CatGreen, style = MaterialTheme.typography.labelMedium)
-            }
+            Text(stateLabel, color = stateColor, style = MaterialTheme.typography.labelMedium)
         }
         Text(
             CurrencyFormatter.format(status.bill.amount, status.bill.currency),
@@ -356,5 +392,49 @@ private fun CalendarBillRow(status: BillWithStatus, onClick: () -> Unit) {
         )
         Spacer(Modifier.width(4.dp))
         Icon(Icons.Filled.ChevronRight, "View bill", tint = CatSubtext0)
+    }
+}
+
+@Composable
+private fun CalendarLegend() {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        LegendItem(CatGreen, "Paid")
+        LegendItem(com.sysadmindoc.billminder.ui.theme.CatYellow, "Due soon")
+        LegendItem(CatRed, "Overdue")
+        LegendItem(CatBlue, "Upcoming")
+    }
+}
+
+@Composable
+private fun LegendItem(color: Color, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(7.dp).clip(CircleShape).background(color))
+        Spacer(Modifier.width(5.dp))
+        Text(label, color = CatSubtext0, style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+@Composable
+private fun CalendarMonthSummary(total: Double, paid: Double, remaining: Double, currency: String) {
+    GroupedSurface(contentPadding = PaddingValues(vertical = 14.dp)) {
+        Row(modifier = Modifier.fillMaxWidth()) {
+            CalendarMetric("Scheduled", CurrencyFormatter.format(total, currency), CatText, Modifier.weight(1f))
+            Box(Modifier.width(1.dp).height(46.dp).background(CatDivider))
+            CalendarMetric("Paid", CurrencyFormatter.format(paid, currency), CatGreen, Modifier.weight(1f))
+            Box(Modifier.width(1.dp).height(46.dp).background(CatDivider))
+            CalendarMetric("Remaining", CurrencyFormatter.format(remaining, currency), CatBlue, Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun CalendarMetric(label: String, value: String, color: Color, modifier: Modifier = Modifier) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(label, color = CatSubtext0, style = MaterialTheme.typography.labelSmall)
+        Spacer(Modifier.height(3.dp))
+        Text(value, color = color, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
     }
 }

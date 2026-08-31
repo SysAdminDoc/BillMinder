@@ -290,7 +290,7 @@ private fun DecoyScreen() {
 enum class BottomTab(val label: String, val icon: ImageVector) {
     HOME("Home", Icons.Filled.Home),
     CALENDAR("Calendar", Icons.Filled.CalendarMonth),
-    STATS("Stats", Icons.Filled.PieChart),
+    STATS("Insights", Icons.Filled.PieChart),
     SETTINGS("Settings", Icons.Filled.Settings)
 }
 
@@ -318,7 +318,7 @@ fun BillMinderNavHost(
                 Column {
                     HorizontalDivider(color = CatDivider)
                     NavigationBar(
-                        modifier = Modifier.height(76.dp),
+                        modifier = Modifier.height(72.dp),
                         containerColor = CatMantle,
                         contentColor = CatText,
                         tonalElevation = 0.dp
@@ -341,7 +341,18 @@ fun BillMinderNavHost(
                                         restoreState = true
                                     }
                                 },
-                                icon = { Icon(tab.icon, tab.label, modifier = Modifier.size(24.dp)) },
+                                icon = {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Box(
+                                            Modifier
+                                                .width(24.dp)
+                                                .height(2.dp)
+                                                .background(if (isSelected) CatBlue else CatMantle)
+                                        )
+                                        Spacer(Modifier.height(4.dp))
+                                        Icon(tab.icon, tab.label, modifier = Modifier.size(23.dp))
+                                    }
+                                },
                                 label = { Text(tab.label, style = MaterialTheme.typography.labelMedium) },
                                 colors = NavigationBarItemDefaults.colors(
                                     selectedIconColor = CatBlue,
@@ -375,7 +386,8 @@ fun BillMinderNavHost(
                 CalendarScreen(
                     viewModel = viewModel,
                     onNavigateBack = { navController.popBackStack() },
-                    onBillTap = { navController.navigate("detail/$it") }
+                    onBillTap = { navController.navigate("detail/$it") },
+                    onAddBill = { navController.navigate("add_edit/0") }
                 )
             }
 

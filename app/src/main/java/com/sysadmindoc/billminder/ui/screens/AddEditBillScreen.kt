@@ -54,13 +54,14 @@ fun AddEditBillScreen(
     var secondReminder by remember { mutableStateOf<ReminderTiming?>(null) }
     var isEnabled by remember { mutableStateOf(true) }
     var isVariableAmount by remember { mutableStateOf(false) }
+    var showAdvancedOptions by remember { mutableStateOf(false) }
     var amountMin by remember { mutableStateOf("") }
     var amountMax by remember { mutableStateOf("") }
     var amountRangeError by remember { mutableStateOf<String?>(null) }
     var isSplitBill by remember { mutableStateOf(false) }
     var splitError by remember { mutableStateOf<String?>(null) }
     val payees = remember { mutableStateListOf<PayeeDraft>() }
-    var selectedColor by remember { mutableLongStateOf(0xFF89B4FA) }
+    var selectedColor by remember { mutableLongStateOf(CatBlue.value.toLong()) }
     var isLoaded by remember { mutableStateOf(billId == null) }
 
     val isEditing = billId != null && billId != 0L
@@ -89,6 +90,7 @@ fun AddEditBillScreen(
             payees.clear()
             payees.addAll(viewModel.getPayeesForBill(bill.id).map { PayeeDraft(it.name, it.sharePercent) })
             isSplitBill = payees.isNotEmpty()
+            showAdvancedOptions = bill.isVariableAmount || payees.isNotEmpty()
             selectedColor = bill.color
             isLoaded = true
         }
@@ -164,7 +166,7 @@ fun AddEditBillScreen(
         contentWindowInsets = WindowInsets(0.dp),
         topBar = {
             TopAppBar(
-                title = { Text(if (isEditing) "Edit Bill" else "Add Bill", color = CatText) },
+                title = { Text(if (isEditing) "Edit bill" else "Add bill", color = CatText, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = CatCrust),
                 windowInsets = WindowInsets(0.dp),
                 navigationIcon = {
@@ -202,7 +204,7 @@ fun AddEditBillScreen(
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Spacer(Modifier.height(4.dp))
 
@@ -217,15 +219,16 @@ fun AddEditBillScreen(
                     BillTemplate("Other", BillCategory.OTHER, null)
                 )
                 SectionHeading("Quick add")
-                GroupedSurface(contentPadding = PaddingValues(10.dp)) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                GroupedSurface(contentPadding = PaddingValues(6.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         quickTemplates.chunked(3).forEach { templates ->
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 templates.forEach { template ->
+                                    val isSelected = name == template.name && category == template.category
                                     Surface(
                                         modifier = Modifier
                                             .weight(1f)
-                                            .height(54.dp)
+                                            .height(48.dp)
                                             .clickable {
                                                 name = template.name
                                                 category = template.category
@@ -234,22 +237,22 @@ fun AddEditBillScreen(
                                                 template.suggestedAmount?.let {
                                                     amount = it.toBigDecimal().stripTrailingZeros().toPlainString()
                                                 }
-                                            },
+                                        },
                                         shape = RoundedCornerShape(8.dp),
-                                        color = CatSurface0,
-                                        border = BorderStroke(1.dp, CatDivider)
+                                        color = if (isSelected) CatBlue.copy(alpha = 0.11f) else CatSurface0,
+                                        border = BorderStroke(if (isSelected) 2.dp else 1.dp, if (isSelected) CatBlue else CatDivider)
                                     ) {
                                         Row(
-                                            modifier = Modifier.padding(horizontal = 10.dp),
+                                            modifier = Modifier.padding(horizontal = 8.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Icon(
                                                 getCategoryIcon(template.category),
                                                 contentDescription = null,
                                                 tint = CategoryColors[template.category.ordinal % CategoryColors.size],
-                                                modifier = Modifier.size(20.dp)
+                                                modifier = Modifier.size(18.dp)
                                             )
-                                            Spacer(Modifier.width(8.dp))
+                                            Spacer(Modifier.width(6.dp))
                                             Text(
                                                 template.name,
                                                 style = MaterialTheme.typography.labelLarge,
@@ -266,8 +269,8 @@ fun AddEditBillScreen(
             }
 
             SectionHeading("Essentials")
-            GroupedSurface(contentPadding = PaddingValues(14.dp)) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            GroupedSurface(contentPadding = PaddingValues(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
@@ -331,6 +334,51 @@ fun AddEditBillScreen(
                 }
             }
 
+            // Category stays with the core bill identity, matching the ledger form hierarchy.
+            Box {
+                OutlinedTextField(
+                    value = category.label,
+                    onValueChange = {},
+                    label = { Text("Category") },
+                    readOnly = true,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().clickable { showCategoryMenu = true },
+                    trailingIcon = { Icon(Icons.Filled.ArrowDropDown, null, tint = CatSubtext0) },
+                    colors = billFieldColors(),
+                    enabled = false
+                )
+                DropdownMenu(
+                    expanded = showCategoryMenu,
+                    onDismissRequest = { showCategoryMenu = false },
+                    containerColor = CatSurface0
+                ) {
+                    BillCategory.entries.forEach { cat ->
+                        DropdownMenuItem(
+                            text = { Text(cat.label, color = CatText) },
+                            onClick = {
+                                category = cat
+                                selectedColor = CategoryColors[cat.ordinal % CategoryColors.size].value.toLong()
+                                showCategoryMenu = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            SettingsStyleRow(
+                title = "Advanced options",
+                subtitle = "Variable amounts and split bills",
+                icon = Icons.Filled.Tune,
+                onClick = { showAdvancedOptions = !showAdvancedOptions }
+            ) {
+                Icon(
+                    if (showAdvancedOptions) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = null,
+                    tint = CatOverlay0
+                )
+            }
+
+            if (showAdvancedOptions) {
             SettingsStyleRow(
                 title = "Variable amount",
                 subtitle = "Track an expected value and allowed range",
@@ -461,61 +509,11 @@ fun AddEditBillScreen(
             }
             }
             }
-
-            SectionHeading("Schedule")
-            GroupedSurface(contentPadding = PaddingValues(14.dp)) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedTextField(
-                value = dueDay,
-                onValueChange = { v ->
-                    val num = v.filter { it.isDigit() }
-                    if (num.length <= 2) dueDay = num
-                },
-                label = {
-                    Text(
-                        when (recurrence) {
-                            Recurrence.WEEKLY, Recurrence.BIWEEKLY -> "Day of Week (1=Sun, 7=Sat)"
-                            else -> "Day of Month (1-31)"
-                        }
-                    )
-                },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(),
-                colors = billFieldColors()
-            )
-
-            // Category
-            Box {
-                OutlinedTextField(
-                    value = category.label,
-                    onValueChange = {},
-                    label = { Text("Category") },
-                    readOnly = true,
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().clickable { showCategoryMenu = true },
-                    trailingIcon = { Icon(Icons.Filled.ArrowDropDown, null, tint = CatSubtext0) },
-                    colors = billFieldColors(),
-                    enabled = false
-                )
-                DropdownMenu(
-                    expanded = showCategoryMenu,
-                    onDismissRequest = { showCategoryMenu = false },
-                    containerColor = CatSurface0
-                ) {
-                    BillCategory.entries.forEach { cat ->
-                        DropdownMenuItem(
-                            text = { Text(cat.label, color = CatText) },
-                            onClick = {
-                                category = cat
-                                selectedColor = CategoryColors[cat.ordinal % CategoryColors.size].value.toLong()
-                                showCategoryMenu = false
-                            }
-                        )
-                    }
-                }
             }
 
+            SectionHeading("Schedule")
+            GroupedSurface(contentPadding = PaddingValues(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             // Recurrence
             Box {
                 OutlinedTextField(
@@ -546,12 +544,59 @@ fun AddEditBillScreen(
                 }
             }
 
-            // Reminders
+            OutlinedTextField(
+                value = dueDay,
+                onValueChange = { v ->
+                    val num = v.filter { it.isDigit() }
+                    if (num.length <= 2) dueDay = num
+                },
+                label = {
+                    Text(
+                        when (recurrence) {
+                            Recurrence.WEEKLY, Recurrence.BIWEEKLY -> "Day of Week (1=Sun, 7=Sat)"
+                            else -> "Day of Month (1-31)"
+                        }
+                    )
+                },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth(),
+                colors = billFieldColors()
+            )
+
+            }
+            }
+
+            SectionHeading("Payment & reminders")
+            GroupedSurface(contentPadding = PaddingValues(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SettingsStyleRow(
+                title = "Auto-pay",
+                subtitle = "Show this bill as paid automatically",
+                icon = Icons.Filled.Payments
+            ) {
+                SquareToggle(
+                    checked = isAutoPay,
+                    onCheckedChange = { isAutoPay = it }
+                )
+            }
+            GroupDivider()
+            SettingsStyleRow(
+                title = "Reminders",
+                subtitle = "Notify me before this bill is due",
+                icon = Icons.Filled.NotificationsActive
+            ) {
+                SquareToggle(
+                    checked = isEnabled,
+                    onCheckedChange = { isEnabled = it }
+                )
+            }
+
             Box {
                 OutlinedTextField(
                     value = reminderTiming.label,
                     onValueChange = {},
-                    label = { Text("Reminder") },
+                    label = { Text("Reminder timing") },
                     readOnly = true,
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().clickable { showReminderMenu = true },
@@ -580,7 +625,7 @@ fun AddEditBillScreen(
                 OutlinedTextField(
                     value = secondReminder?.label ?: "None",
                     onValueChange = {},
-                    label = { Text("Second Reminder (optional)") },
+                    label = { Text("Second reminder (optional)") },
                     readOnly = true,
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().clickable { showSecondReminderMenu = true },
@@ -608,20 +653,9 @@ fun AddEditBillScreen(
             }
             }
 
-            SectionHeading("Payment & reminders")
-            GroupedSurface(contentPadding = PaddingValues(14.dp)) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedTextField(
-                value = tags,
-                onValueChange = { tags = it },
-                label = { Text("Tags (comma-separated)") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("e.g. essential, shared, work", color = CatOverlay0) },
-                colors = billFieldColors()
-            )
-
-            // Payment URL
+            SectionHeading("Additional details")
+            GroupedSurface(contentPadding = PaddingValues(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
                 value = paymentUrl,
                 onValueChange = { paymentUrl = it },
@@ -632,27 +666,15 @@ fun AddEditBillScreen(
                 colors = billFieldColors()
             )
 
-            SettingsStyleRow(
-                title = "Auto-pay",
-                subtitle = "Show this bill as paid automatically",
-                icon = Icons.Filled.Payments
-            ) {
-                SquareToggle(
-                    checked = isAutoPay,
-                    onCheckedChange = { isAutoPay = it }
-                )
-            }
-            GroupDivider()
-            SettingsStyleRow(
-                title = "Reminders",
-                subtitle = "Notify me before this bill is due",
-                icon = Icons.Filled.NotificationsActive
-            ) {
-                SquareToggle(
-                    checked = isEnabled,
-                    onCheckedChange = { isEnabled = it }
-                )
-            }
+            OutlinedTextField(
+                value = tags,
+                onValueChange = { tags = it },
+                label = { Text("Tags (comma-separated)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("e.g. essential, shared, work", color = CatOverlay0) },
+                colors = billFieldColors()
+            )
 
             // Color picker
             Text("Color", color = CatSubtext0, style = MaterialTheme.typography.labelLarge)
@@ -690,13 +712,13 @@ fun AddEditBillScreen(
             // Save
             Button(
                 onClick = ::saveBill,
-                modifier = Modifier.fillMaxWidth().height(52.dp),
+                modifier = Modifier.fillMaxWidth().height(50.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = CatBlue, contentColor = CatCrust),
                 shape = RoundedCornerShape(8.dp),
                 enabled = name.isNotBlank() && (amount.toDoubleOrNull() ?: 0.0) > 0
             ) {
                 Text(
-                    if (isEditing) "Save Changes" else "Add Bill",
+                    if (isEditing) "Save changes" else "Save bill",
                     style = MaterialTheme.typography.titleMedium
                 )
             }
@@ -717,5 +739,8 @@ private fun billFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedLabelColor = CatBlue,
     unfocusedLabelColor = CatSubtext0,
     disabledLabelColor = CatSubtext0,
-    cursorColor = CatBlue
+    cursorColor = CatBlue,
+    focusedContainerColor = CatBase,
+    unfocusedContainerColor = CatBase,
+    disabledContainerColor = CatBase
 )

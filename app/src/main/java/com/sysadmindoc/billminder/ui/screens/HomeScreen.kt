@@ -6,6 +6,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -72,6 +74,7 @@ import com.sysadmindoc.billminder.data.SortMode
 import com.sysadmindoc.billminder.ui.components.BillCard
 import com.sysadmindoc.billminder.ui.components.GroupDivider
 import com.sysadmindoc.billminder.ui.components.GroupedSurface
+import com.sysadmindoc.billminder.ui.components.IconWell
 import com.sysadmindoc.billminder.ui.components.MarkPaidDialog
 import com.sysadmindoc.billminder.ui.components.SectionHeading
 import com.sysadmindoc.billminder.ui.components.SummaryCard
@@ -153,7 +156,7 @@ fun HomeScreen(
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             item {
                 HomeHeader(
@@ -245,6 +248,10 @@ fun HomeScreen(
                 }
             }
 
+            if (billsWithStatus.isNotEmpty()) {
+                item { AddBillPrompt(onClick = onAddBill) }
+            }
+
             item { Spacer(Modifier.height(12.dp)) }
         }
     }
@@ -281,21 +288,34 @@ private fun HomeHeader(
             Text(
                 "BillMinder",
                 color = CatText,
-                style = MaterialTheme.typography.headlineLarge,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = (-0.5).sp,
                 modifier = Modifier.weight(1f)
             )
-            IconButton(onClick = onAddBill) {
+            IconButton(
+                onClick = onAddBill,
+                modifier = Modifier.size(42.dp).border(1.dp, CatDivider, RoundedCornerShape(8.dp))
+            ) {
                 Icon(Icons.Filled.Add, "Add bill", tint = CatBlue)
             }
-            IconButton(onClick = onSearchToggle) {
+            Spacer(Modifier.width(6.dp))
+            IconButton(
+                onClick = onSearchToggle,
+                modifier = Modifier.size(42.dp).border(1.dp, CatDivider, RoundedCornerShape(8.dp))
+            ) {
                 Icon(
                     if (showSearch) Icons.Filled.Close else Icons.Filled.Search,
                     if (showSearch) "Close search" else "Search bills",
                     tint = CatBlue
                 )
             }
+            Spacer(Modifier.width(6.dp))
             Box {
-                IconButton(onClick = { onShowSortMenuChange(true) }) {
+                IconButton(
+                    onClick = { onShowSortMenuChange(true) },
+                    modifier = Modifier.size(42.dp).border(1.dp, CatDivider, RoundedCornerShape(8.dp))
+                ) {
                     Icon(Icons.Filled.SwapVert, "Sort and filter", tint = CatBlue)
                 }
                 DropdownMenu(
@@ -376,6 +396,8 @@ private fun HomeHeader(
 @Composable
 private fun WeekHorizon(billsWithStatus: List<BillWithStatus>) {
     val dayName = remember { SimpleDateFormat("EEE", Locale.getDefault()) }
+    val monthDay = remember { SimpleDateFormat("MMMM d", Locale.getDefault()) }
+    val shortMonthDay = remember { SimpleDateFormat("MMM d", Locale.getDefault()) }
     val today = remember {
         Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 0)
@@ -393,7 +415,24 @@ private fun WeekHorizon(billsWithStatus: List<BillWithStatus>) {
         }
     }
 
+    val rangeLabel = remember(days) {
+        val start = days.first()
+        val end = days.last()
+        if (start.get(Calendar.MONTH) == end.get(Calendar.MONTH)) {
+            "${monthDay.format(start.time)} - ${end.get(Calendar.DAY_OF_MONTH)}"
+        } else {
+            "${shortMonthDay.format(start.time)} - ${shortMonthDay.format(end.time)}"
+        }
+    }
+
     Column {
+        Text(
+            text = rangeLabel,
+            color = CatSubtext0,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium
+        )
+        Spacer(Modifier.height(8.dp))
         Row(modifier = Modifier.fillMaxWidth()) {
             days.forEachIndexed { index, day ->
                 val matching = billsWithStatus.filter { status ->
@@ -402,7 +441,17 @@ private fun WeekHorizon(billsWithStatus: List<BillWithStatus>) {
                         due.get(Calendar.DAY_OF_YEAR) == day.get(Calendar.DAY_OF_YEAR)
                 }
                 Column(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(76.dp)
+                        .padding(horizontal = 2.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (index == 0) CatBlue.copy(alpha = 0.08f) else Color.Transparent)
+                        .then(
+                            if (index == 0) Modifier.border(1.dp, CatBlue, RoundedCornerShape(8.dp))
+                            else Modifier
+                        )
+                        .padding(vertical = 8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
@@ -419,9 +468,7 @@ private fun WeekHorizon(billsWithStatus: List<BillWithStatus>) {
                         fontWeight = FontWeight.SemiBold
                     )
                     Spacer(Modifier.height(5.dp))
-                    if (index == 0) {
-                        Box(Modifier.width(28.dp).height(3.dp).background(CatBlue, RoundedCornerShape(1.dp)))
-                    } else if (matching.isNotEmpty()) {
+                    if (matching.isNotEmpty()) {
                         Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                             matching.take(2).forEach { status ->
                                 val marker = when {
@@ -441,6 +488,35 @@ private fun WeekHorizon(billsWithStatus: List<BillWithStatus>) {
         }
         Spacer(Modifier.height(10.dp))
         HorizontalDivider(color = CatDivider)
+    }
+}
+
+@Composable
+private fun AddBillPrompt(onClick: () -> Unit) {
+    GroupedSurface(
+        modifier = Modifier.clickable(onClick = onClick),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Add a bill",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = CatText
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = "Track another bill or subscription",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = CatSubtext0
+                )
+            }
+            IconWell(icon = Icons.Filled.Add, contentDescription = null, tint = CatBlue)
+        }
     }
 }
 

@@ -222,6 +222,86 @@ fun SettingsScreen(
             )
         }
 
+        SectionHeading("Preferences & appearance")
+        GroupedSurface {
+            Box {
+                SettingsRow(
+                    icon = Icons.Filled.AttachMoney,
+                    title = "Display Currency",
+                    subtitle = "Dashboard totals: ${displayCurrency} · ${CurrencyCatalog.find(displayCurrency).name}"
+                ) {
+                    showCurrencyMenu = true
+                }
+                DropdownMenu(
+                    expanded = showCurrencyMenu,
+                    onDismissRequest = { showCurrencyMenu = false },
+                    containerColor = CatSurface0
+                ) {
+                    CurrencyCatalog.supported.forEach { info ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    "${info.code} · ${info.name}",
+                                    color = if (info.code == displayCurrency) CatBlue else CatText
+                                )
+                            },
+                            onClick = {
+                                viewModel.setDisplayCurrency(info.code)
+                                showCurrencyMenu = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            SettingsRow(
+                icon = Icons.Filled.Tune,
+                title = "Offline FX Rates",
+                subtitle = "Bundled snapshot; set manual overrides when needed"
+            ) {
+                showFxRates = true
+            }
+
+            SettingsRow(
+                icon = Icons.Filled.PieChart,
+                title = "Category Budgets",
+                subtitle = "${BudgetPrefs.getAll(context).size} monthly caps configured in $displayCurrency"
+            ) {
+                showBudgetDialog = true
+            }
+        }
+
+        if (showFxRates) {
+            FxRatesDialog(
+                manualRates = viewModel.getManualRates(),
+                onSaveRate = viewModel::setManualRate,
+                onDismiss = { showFxRates = false }
+            )
+        }
+
+        if (showBudgetDialog) {
+            val existingBudgets = BudgetPrefs.getAll(context)
+            CategoryBudgetsDialog(
+                displayCurrency = displayCurrency,
+                initialValues = existingBudgets.mapValues { (_, budget) ->
+                    "%.2f".format(viewModel.convertToDisplay(budget.amount, budget.currency))
+                },
+                onSave = { values ->
+                    BillCategory.entries.forEach { category ->
+                        BudgetPrefs.setBudget(
+                            context,
+                            category,
+                            values[category]?.toDoubleOrNull(),
+                            displayCurrency
+                        )
+                    }
+                    showBudgetDialog = false
+                    Toast.makeText(context, "Category budgets saved", Toast.LENGTH_SHORT).show()
+                },
+                onDismiss = { showBudgetDialog = false }
+            )
+        }
+
         SectionHeading("Security & reminders")
         GroupedSurface {
         SettingsToggle(
@@ -399,86 +479,6 @@ fun SettingsScreen(
             )
         }
 
-        SectionHeading("Planning")
-        GroupedSurface {
-        Box {
-            SettingsRow(
-                icon = Icons.Filled.AttachMoney,
-                title = "Display Currency",
-                subtitle = "Dashboard totals: ${displayCurrency} · ${CurrencyCatalog.find(displayCurrency).name}"
-            ) {
-                showCurrencyMenu = true
-            }
-            DropdownMenu(
-                expanded = showCurrencyMenu,
-                onDismissRequest = { showCurrencyMenu = false },
-                containerColor = CatSurface0
-            ) {
-                CurrencyCatalog.supported.forEach { info ->
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                "${info.code} · ${info.name}",
-                                color = if (info.code == displayCurrency) CatBlue else CatText
-                            )
-                        },
-                        onClick = {
-                            viewModel.setDisplayCurrency(info.code)
-                            showCurrencyMenu = false
-                        }
-                    )
-                }
-            }
-        }
-
-        SettingsRow(
-            icon = Icons.Filled.Tune,
-            title = "Offline FX Rates",
-            subtitle = "Bundled snapshot; set manual overrides when needed"
-        ) {
-            showFxRates = true
-        }
-
-        if (showFxRates) {
-            FxRatesDialog(
-                manualRates = viewModel.getManualRates(),
-                onSaveRate = viewModel::setManualRate,
-                onDismiss = { showFxRates = false }
-            )
-        }
-
-        SettingsRow(
-            icon = Icons.Filled.PieChart,
-            title = "Category Budgets",
-            subtitle = "${BudgetPrefs.getAll(context).size} monthly caps configured in $displayCurrency"
-        ) {
-            showBudgetDialog = true
-        }
-        }
-
-        if (showBudgetDialog) {
-            val existingBudgets = BudgetPrefs.getAll(context)
-            CategoryBudgetsDialog(
-                displayCurrency = displayCurrency,
-                initialValues = existingBudgets.mapValues { (_, budget) ->
-                    "%.2f".format(viewModel.convertToDisplay(budget.amount, budget.currency))
-                },
-                onSave = { values ->
-                    BillCategory.entries.forEach { category ->
-                        BudgetPrefs.setBudget(
-                            context,
-                            category,
-                            values[category]?.toDoubleOrNull(),
-                            displayCurrency
-                        )
-                    }
-                    showBudgetDialog = false
-                    Toast.makeText(context, "Category budgets saved", Toast.LENGTH_SHORT).show()
-                },
-                onDismiss = { showBudgetDialog = false }
-            )
-        }
-
         SectionHeading("Data & transfer")
         GroupedSurface {
         SettingsRow(
@@ -610,6 +610,7 @@ fun SettingsScreen(
             AlertDialog(
                 onDismissRequest = { showYearPicker = false },
                 containerColor = CatSurface0,
+                shape = RoundedCornerShape(12.dp),
                 title = { Text("Select Year", color = CatText) },
                 text = {
                     Column {
@@ -640,14 +641,14 @@ fun SettingsScreen(
         }
 
         SectionHeading("About")
-        GroupedSurface(contentPadding = PaddingValues(16.dp)) {
-            Text("BillMinder v2.3.0", style = MaterialTheme.typography.titleMedium, color = CatText)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "Private bill tracking, practical reminders, and clear spending insights.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = CatSubtext0
-            )
+        GroupedSurface {
+            SettingsStyleRow(
+                title = "BillMinder",
+                subtitle = "Private bill tracking and practical reminders",
+                icon = Icons.Filled.Info
+            ) {
+                Text("v2.4.0", style = MaterialTheme.typography.labelLarge, color = CatBlue)
+            }
         }
 
         Spacer(Modifier.height(28.dp))
@@ -708,6 +709,7 @@ private fun PinSetupDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = CatSurface0,
+        shape = RoundedCornerShape(12.dp),
         title = {
             Text(
                 if (step == 1) title else "Confirm PIN",
@@ -794,6 +796,7 @@ private fun FxRatesDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = CatSurface0,
+        shape = RoundedCornerShape(12.dp),
         title = { Text("Offline FX Rates", color = CatText) },
         text = {
             Column(
@@ -869,6 +872,7 @@ private fun HomeGeofenceDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = CatSurface0,
+        shape = RoundedCornerShape(12.dp),
         title = { Text("Home Geofence", color = CatText) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -957,6 +961,7 @@ private fun CategoryBudgetsDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = CatSurface0,
+        shape = RoundedCornerShape(12.dp),
         title = { Text("Category Budgets", color = CatText) },
         text = {
             Column(
@@ -1007,6 +1012,7 @@ private fun InterchangeExportDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = CatSurface0,
+        shape = RoundedCornerShape(12.dp),
         title = { Text("Export for Another App", color = CatText) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1092,6 +1098,7 @@ private fun CsvMappingDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = CatSurface0,
+        shape = RoundedCornerShape(12.dp),
         title = { Text("Map CSV Columns", color = CatText) },
         text = {
             Column(
@@ -1234,6 +1241,7 @@ private fun SmsCandidatesDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = CatSurface0,
+        shape = RoundedCornerShape(12.dp),
         title = { Text("SMS bill proposals", color = CatText) },
         text = {
             if (candidates.isEmpty()) {
