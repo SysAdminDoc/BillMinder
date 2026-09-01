@@ -4,6 +4,7 @@ All notable changes to BillMinder will be documented in this file.
 
 ## [Unreleased]
 
+- A bill's payment link is now opened only when it is a web address. Anything else is refused with an explanation instead of being handed to whatever app claims the scheme, the destination host is named as the link opens, and a device with nothing able to open it says so.
 - Full-screen reminders no longer fail silently on Android 14 and newer, which withhold that permission from apps outside the calling and alarm categories. The reminder falls back to a normal heads-up notification, the setting says so, and a row appears that opens the screen where the permission can be granted.
 - Opening a receipt no longer leaves the decrypted copy sitting in the cache. It is deleted and its temporary read permission revoked as soon as you return to the bill, or when you leave the screen without coming back.
 - The README now lists every permission the app declares and what each one is for, states that reminders fire at 9:00 local time, and describes what happens when exact alarms are unavailable.

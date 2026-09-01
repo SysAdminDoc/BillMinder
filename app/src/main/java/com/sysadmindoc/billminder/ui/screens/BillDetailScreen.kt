@@ -32,6 +32,7 @@ import com.sysadmindoc.billminder.data.CalendarSync
 import com.sysadmindoc.billminder.data.CurrencyFormatter
 import com.sysadmindoc.billminder.data.HolidayCalendar
 import com.sysadmindoc.billminder.data.Payment
+import com.sysadmindoc.billminder.data.PaymentLink
 import com.sysadmindoc.billminder.domain.BillCycles
 import com.sysadmindoc.billminder.notification.ReminderScheduler
 import com.sysadmindoc.billminder.security.EncryptedAttachmentStore
@@ -75,6 +76,24 @@ fun BillDetailScreen(
             runCatching { context.revokeUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             EncryptedAttachmentStore.releaseCachedView(context, file)
             openedReceipt.value = null
+        }
+    }
+    // Both entry points below go through here: the stored text is attacker-influenced, so the
+    // scheme is checked, the host is named before the jump, and a device with nothing to handle the
+    // link says so instead of throwing.
+    val openPaymentLink: (String) -> Unit = { rawUrl ->
+        val link = PaymentLink.parse(rawUrl)
+        if (link == null) {
+            Toast.makeText(
+                context,
+                "That payment link is not a web address, so it was not opened",
+                Toast.LENGTH_LONG
+            ).show()
+        } else {
+            Toast.makeText(context, "Opening ${link.host}", Toast.LENGTH_SHORT).show()
+            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, link)) }.onFailure {
+                Toast.makeText(context, "No app on this device can open that link", Toast.LENGTH_LONG).show()
+            }
         }
     }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -144,8 +163,7 @@ fun BillDetailScreen(
                                 DropdownMenuItem(
                                     text = { Text("Pay Now", color = CatText) },
                                     onClick = {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(currentBill.paymentUrl))
-                                        context.startActivity(intent)
+                                        openPaymentLink(currentBill.paymentUrl)
                                         showMoreMenu = false
                                     },
                                     leadingIcon = { Icon(Icons.Filled.OpenInBrowser, null, tint = CatGreen) }
@@ -300,7 +318,7 @@ fun BillDetailScreen(
                         if (currentBill.paymentUrl.isBlank()) {
                             Toast.makeText(context, "No payment link saved", Toast.LENGTH_SHORT).show()
                         } else {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(currentBill.paymentUrl)))
+                            openPaymentLink(currentBill.paymentUrl)
                         }
                     }
                     DetailAction(

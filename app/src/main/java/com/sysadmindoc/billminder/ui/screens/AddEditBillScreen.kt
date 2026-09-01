@@ -57,6 +57,7 @@ fun AddEditBillScreen(
     var notes by remember { mutableStateOf("") }
     var tags by remember { mutableStateOf("") }
     var paymentUrl by remember { mutableStateOf("") }
+    var paymentUrlError by remember { mutableStateOf<String?>(null) }
     var reminderTiming by remember { mutableStateOf(ReminderTiming.ONE_DAY) }
     var secondReminder by remember { mutableStateOf<ReminderTiming?>(null) }
     var isEnabled by remember { mutableStateOf(true) }
@@ -114,6 +115,13 @@ fun AddEditBillScreen(
         val parsedMin = if (isVariableAmount) amountMin.toDoubleOrNull() else null
         val parsedMax = if (isVariableAmount) amountMax.toDoubleOrNull() else null
         if (name.isBlank() || parsedAmount <= 0) return
+        // Saving a link the bill detail screen would then refuse to open just moves the failure to
+        // where there is no field to correct.
+        if (!PaymentLink.isAcceptable(paymentUrl)) {
+            paymentUrlError = "Enter a web address, for example https://example.com/pay"
+            return
+        }
+        paymentUrlError = null
         if (isVariableAmount) {
             val validationError = BillValidation.variableAmountError(parsedAmount, parsedMin, parsedMax)
             if (validationError != null) {
@@ -669,9 +677,14 @@ fun AddEditBillScreen(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
                 value = paymentUrl,
-                onValueChange = { paymentUrl = it },
+                onValueChange = {
+                    paymentUrl = it
+                    paymentUrlError = null
+                },
                 label = { Text("Payment URL (optional)") },
                 singleLine = true,
+                isError = paymentUrlError != null,
+                supportingText = paymentUrlError?.let { message -> { Text(message, color = CatRed) } },
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text("https://...", color = CatOverlay0) },
                 colors = billFieldColors()
